@@ -1,0 +1,65 @@
+{
+  "server": {
+    "node_id": "beast-node-001",
+    "host": "127.0.0.1",
+    "service_name": "beastserver",
+    "net": {
+      "tcp": {
+        "port": 8010,
+        "max_frame_bytes": 65536,
+        "idle_timeout_seconds": 60,
+        "io_thread_count": 4
+      }
+    },
+    "log": {
+      "level": "debug",
+      "short_source": true,
+      "logger_name": "beast"
+    },
+    "etcd": {
+      "endpoints": "http://127.0.0.1:2379",
+      "ttl_seconds": 10,
+      "report_interval_seconds": 5,
+      "register": {
+        "domain": "game",
+        "version": "v1",
+        "weight": 10,
+        "addr": "127.0.0.1:9010",
+        "ttl": 10
+      }
+    },
+    "grpc": {
+      "port": 9010
+    },
+    "mongodb": {
+      "uri": "mongodb://localhost:27017",
+      "database": "beastserver",
+      "min_pool_size": 10,
+      "max_pool_size": 100,
+      "thread_count": 4,
+      "queue_max_size": 1000
+    },
+    "runtime": {
+      "event_actors": {
+        "count": 4,
+        "queue_capacity": 65536
+      },
+      "loop_actors": {
+        "count": 2,
+        "tick_hz": 30,
+        "queue_capacity": 8192
+      },
+      "timer_wheel": {
+        "tick_duration_ms": 50,
+        "wheel_size": 512
+      }
+    },
+    "debug": {
+      "enabled": false
+    }
+  },
+  "plugins": {
+    "dir": "plugins",
+    "auto_load": true
+  }
+}

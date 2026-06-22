@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package beast.net;
+
+message AuthRequest {
+  string token = 1;
+  string device_id = 2;
+  string version = 3;
+}
+
+message AuthResponse {
+  bool success = 1;
+  string message = 2;
+  uint64 pid = 3;
+  string nickname = 4;
+}

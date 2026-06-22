@@ -1,0 +1,5 @@
+add_subdirectory(core)
+add_subdirectory(net)
+add_subdirectory(engine)
+add_subdirectory(rpc)
+add_subdirectory(server)

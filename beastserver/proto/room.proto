@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package beast.platform;
+
+// 平台统一建房请求（TCP Envelope route: platform.create_room；gRPC: RoomService.CreateRoom）
+message CreateRoomRequest {
+  // 目标玩法引擎，须已通过插件 register_engine 注册。
+  string engine_name = 1;
+  // 除发起者外额外加入房间的玩家（可选；发起者 Session 会自动 bind）
+  repeated string player_ids = 2;
+  // 指定 instance_id（测试/幂等）；为空则由平台生成
+  string instance_id = 3;
+}
+
+message CreateRoomResponse {
+  string instance_id = 1;
+  string engine_name = 2;
+}
+
+// gRPC 对外服务（需 grpc-cpp 代码生成后实现 RoomServiceGrpcServer）
+service RoomService {
+  rpc CreateRoom(CreateRoomRequest) returns (CreateRoomResponse);
+}

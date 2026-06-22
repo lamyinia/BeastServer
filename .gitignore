@@ -1,0 +1,52 @@
+# Build output
+build/
+cmake-build-*/
+out/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+
+# Conan (generated locally / under build/)
+conan/
+conan_toolchain.cmake
+conanbuildinfo.*
+CMakeUserPresets.json
+
+# Compiled artifacts
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.d
+
+# IDE
+.idea/
+.vscode/
+.clangd
+.cache/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# SVN working copy metadata (use Git for version control)
+.svn/

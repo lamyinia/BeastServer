@@ -1,0 +1,16 @@
+[requires]
+boost/1.86.0
+protobuf/5.27.0
+grpc/1.71.0
+spdlog/1.14.1
+nlohmann_json/3.11.3
+gtest/1.14.0
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[options]
+boost/*:shared=False
+protobuf/*:shared=False
+spdlog/*:shared=False

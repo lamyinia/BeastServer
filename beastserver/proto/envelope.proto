@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package beast.net;
+
+message Envelope {
+  string route = 1;
+  bytes payload = 2;
+  uint64 client_seq = 3;
+}

@@ -1,0 +1,70 @@
+#pragma once
+
+#include "beast/platform/core/types.hpp"
+#include "beast/platform/engine/instance/engine_descriptor.hpp"
+#include "beast/platform/engine/instance/instance_event.hpp"
+#include "beast/platform/net/channel/channel_handler_context.hpp"
+#include "beast/platform/net/channel/message.hpp"
+#include "beast/platform/net/dispatch/router.hpp"
+
+#include <vector>
+
+namespace beast::platform::engine::dispatch {
+class PlayerInstanceRegistry;
+}
+
+namespace beast::platform::engine::instance {
+class InstanceManager;
+}
+
+namespace beast::platform::engine::plugin {
+class PluginHost;
+}
+
+namespace beast::platform::net::session {
+class SessionManager;
+}
+
+namespace beast::platform::plugin {
+
+// 插件初始化时可调用的平台 API；生命周期限于 beast_plugin_init 调用期间及之后只读注册结果。
+class ServerContext {
+public:
+    ServerContext(
+        PluginName plugin_name,
+        engine::plugin::PluginHost* host,
+        engine::instance::InstanceManager* instance_manager,
+        net::session::SessionManager* session_manager,
+        engine::dispatch::PlayerInstanceRegistry* player_registry = nullptr);
+
+    [[nodiscard]] const PluginName& plugin_name() const noexcept { return plugin_name_; }
+
+    bool register_engine(engine::instance::EngineDescriptor descriptor);
+    void register_route(RouteId route, net::dispatch::RouteHandler handler);
+
+    bool create_instance(
+        EngineName engine_name,
+        InstanceId instance_id,
+        std::vector<PlayerId> player_ids = {});
+
+    [[nodiscard]] engine::instance::InstanceManager& instances() noexcept;
+
+    // 查询玩家所在实例：Session 优先，Registry 作冷路径 fallback。
+    [[nodiscard]] InstanceId instance_id_for(const PlayerId& player_id) const;
+
+    // 局内事件投递：只读连接 ctx 缓存（auth 时已从 Registry 同步到 Session + pipeline）。
+    bool submit_instance_event(
+        net::channel::ChannelHandlerContext& ch_ctx,
+        const net::channel::MessagePtr& msg,
+        RouteId engine_route,
+        std::vector<std::uint8_t> payload);
+
+private:
+    PluginName plugin_name_;
+    engine::plugin::PluginHost* host_{nullptr};
+    engine::instance::InstanceManager* instance_manager_{nullptr};
+    net::session::SessionManager* session_manager_{nullptr};
+    engine::dispatch::PlayerInstanceRegistry* player_registry_{nullptr};
+};
+
+} // namespace beast::platform::plugin
