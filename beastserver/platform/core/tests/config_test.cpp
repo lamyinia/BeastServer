@@ -32,6 +32,16 @@ TEST(ServerConfigTest, LoadsExampleServerJson) {
     EXPECT_TRUE(server.plugins.auto_load);
     EXPECT_TRUE(server.plugins.only.empty());
     EXPECT_TRUE(server.plugins.disable.empty());
+    EXPECT_TRUE(server.bizconfig.enabled);
+    EXPECT_EQ(server.bizconfig.dir, "bizconfig/server");
+    EXPECT_EQ(server.bizconfig.manifest_file, "manifest.json");
+    EXPECT_TRUE(server.ai.enabled);
+    EXPECT_EQ(server.ai.default_provider, "volcengine");
+    EXPECT_EQ(server.ai.default_model, "doubao-seed-2-0-pro-260215");
+    EXPECT_EQ(server.ai.default_music_model, "doubao-music");
+    EXPECT_EQ(server.ai.default_embedding_model, "doubao-embedding-vision-251215");
+    EXPECT_TRUE(server.ai.providers.contains("volcengine"));
+    ASSERT_TRUE(server.ai.providers.at("volcengine").embedding_endpoint.find("embeddings") != std::string::npos);
 }
 
 TEST(PluginsConfigTest, AutoLoadAllByDefault) {

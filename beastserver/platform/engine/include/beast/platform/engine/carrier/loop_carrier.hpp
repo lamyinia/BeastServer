@@ -1,12 +1,15 @@
 #pragma once
 
 #include "beast/platform/core/config/server_config.hpp"
+#include "beast/platform/engine/carrier/carrier_event_queue.hpp"
 #include "beast/platform/engine/carrier/i_carrier.hpp"
+#include "beast/platform/engine/instance/instance_event.hpp"
 
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -17,7 +20,7 @@
 
 namespace beast::platform::engine::carrier {
 
-// 单线程：事件队列 + per-instance 最小堆 tick 调度（支持混 tick_hz）。
+// 单线程 worker：per-instance 帧循环（pending events → on_tick），min-heap 异构 tick_hz。
 class LoopCarrier final : public ICarrier {
 public:
     LoopCarrier(
@@ -49,6 +52,8 @@ private:
         TimestampMs tick_interval_ms{0};
         std::chrono::steady_clock::time_point next_tick_at{};
         Tick tick{0};
+        std::deque<instance::InstanceEvent> pending_events;
+        bool pending_destroy{false};
     };
 
     struct TickSchedule {
@@ -60,9 +65,6 @@ private:
         }
     };
 
-    struct SubmitEventTask {
-        instance::InstanceEvent event;
-    };
     struct AddInstanceTask {
         std::unique_ptr<instance::Instance> instance;
         std::uint32_t tick_hz{0};
@@ -71,15 +73,21 @@ private:
         InstanceId instance_id;
     };
 
-    using CarrierTask = std::variant<SubmitEventTask, AddInstanceTask, RemoveInstanceTask>;
+    using CarrierTask = std::variant<AddInstanceTask, RemoveInstanceTask>;
 
     void worker_loop();
     void process_task(CarrierTask& task);
-    void handle_submit_event(SubmitEventTask& task);
     void handle_add_instance(AddInstanceTask& task);
     void handle_remove_instance(RemoveInstanceTask& task);
+    void drain_event_ingress();
     void drain_pending_tasks();
-    void process_due_ticks(std::chrono::steady_clock::time_point now);
+    void process_due_instances(std::chrono::steady_clock::time_point now);
+    void run_instance_frame(
+        const InstanceId& instance_id,
+        LoopInstanceEntry& entry,
+        std::chrono::steady_clock::time_point now);
+    void finalize_instance(const InstanceId& instance_id);
+    void purge_tick_heap(const InstanceId& instance_id);
     void schedule_tick(const InstanceId& instance_id, LoopInstanceEntry& entry);
     [[nodiscard]] std::chrono::steady_clock::time_point next_tick_deadline() const;
     bool enqueue(CarrierTask task);
@@ -91,10 +99,10 @@ private:
     std::condition_variable queue_cv_;
     std::queue<CarrierTask> queue_;
     std::uint32_t queue_capacity_;
+    InstanceEventIngress event_ingress_;
 
     std::map<InstanceId, LoopInstanceEntry> instances_;
     std::vector<TickSchedule> tick_heap_;
-    std::vector<InstanceId> ended_instances_;
     std::atomic<std::size_t> instance_count_{0};
 };
 

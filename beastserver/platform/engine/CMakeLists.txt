@@ -3,6 +3,7 @@ find_package(Boost REQUIRED)
 
 add_library(beast_engine STATIC
     src/context/engine_context.cpp
+    src/ai/instance_ai_facade.cpp
     src/instance/instance.cpp
     src/carrier/event_carrier.cpp
     src/carrier/event_carrier_pool.cpp
@@ -28,6 +29,8 @@ target_include_directories(beast_engine
 target_link_libraries(beast_engine
     PUBLIC
         beast::core
+        beast::bizutil
+        beast::ai
         beast::net
         Boost::boost
 )

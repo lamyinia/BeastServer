@@ -24,7 +24,7 @@ core::config::RuntimeConfig test_runtime() {
 TEST(ServerContextTest, FallsBackToRegistryWhenSessionEmpty) {
     engine::dispatch::PlayerInstanceRegistry registry;
     engine::instance::InstanceManager manager(test_runtime(), nullptr);
-    engine::plugin::PluginHost host({}, &manager, nullptr, nullptr, nullptr, &registry);
+    engine::plugin::PluginHost host({}, &manager, nullptr, nullptr, &registry);
 
     plugin::ServerContext ctx("test", &host, &manager, nullptr, &registry);
     ASSERT_TRUE(registry.assign("player-1", "room-1"));
@@ -36,12 +36,14 @@ TEST(ServerContextTest, PrefersSessionCacheOverRegistry) {
     engine::dispatch::PlayerInstanceRegistry registry;
     net::server::TcpServer server({});
     engine::instance::InstanceManager manager(test_runtime(), &server.outbound_hub());
-    engine::plugin::PluginHost host({}, &manager, nullptr, nullptr, &server.session_manager(), &registry);
+    engine::plugin::PluginHost host({}, &manager, nullptr, &server.session_manager(), &registry);
 
     plugin::ServerContext ctx("test", &host, &manager, &server.session_manager(), &registry);
     ASSERT_TRUE(server.session_manager().create_or_get_session("player-1", nullptr));
     ASSERT_TRUE(registry.assign("player-1", "room-registry"));
     ASSERT_TRUE(server.session_manager().bind_instance("player-1", "room-session"));
+
+    server.io_context().poll();
 
     EXPECT_EQ(ctx.instance_id_for("player-1"), "room-session");
 }

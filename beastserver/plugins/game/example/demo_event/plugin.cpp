@@ -11,5 +11,6 @@ BEAST_PLUGIN_EXPORT void beast_plugin_init(beast::platform::plugin::ServerContex
         .factory = []() { return beast::demo::event::make_demo_event_engine(); },
     });
 
+
     beast::demo::event::register_demo_event_routes(ctx);
 }

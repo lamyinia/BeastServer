@@ -1,12 +1,18 @@
 #pragma once
 
 #include "beast/platform/core/types.hpp"
+#include "beast/platform/bizutil/config/registration.hpp"
 #include "beast/platform/engine/instance/engine_descriptor.hpp"
 #include "beast/platform/engine/instance/instance_event.hpp"
 #include "beast/platform/net/channel/channel_handler_context.hpp"
 #include "beast/platform/net/channel/message.hpp"
 #include "beast/platform/net/dispatch/router.hpp"
 
+#include <google/protobuf/message.h>
+
+#include <functional>
+#include <memory>
+#include <string>
 #include <vector>
 
 namespace beast::platform::engine::dispatch {
@@ -41,6 +47,17 @@ public:
 
     bool register_engine(engine::instance::EngineDescriptor descriptor);
     void register_route(RouteId route, net::dispatch::RouteHandler handler);
+
+    template<typename ConfigMsg>
+    void register_biz_table(std::string logical_name) {
+        register_biz_table(
+            std::move(logical_name),
+            []() { return std::make_unique<ConfigMsg>(); });
+    }
+
+    void register_biz_table(
+        std::string logical_name,
+        std::function<std::unique_ptr<google::protobuf::Message>()> factory);
 
     bool create_instance(
         EngineName engine_name,

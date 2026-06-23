@@ -173,7 +173,9 @@ TEST(InstanceEventBridgeTest, ForwardsAuthorizedRouteToEngine) {
     ::beast::net::Envelope auth_envelope;
     ASSERT_TRUE(read_framed_envelope(client, auth_envelope));
 
-    EXPECT_EQ(server.session_manager().instance_id_for("77"), "room-1");
+    wait_until(
+        [&]() { return server.session_manager().instance_id_for("77") == "room-1"; },
+        std::chrono::seconds(2));
 
     boost::asio::write(
         client,
@@ -273,7 +275,9 @@ TEST(InstanceEventBridgeTest, UnbindsPlayersWhenInstanceEnds) {
     ::beast::net::Envelope auth_envelope;
     ASSERT_TRUE(read_framed_envelope(client, auth_envelope));
 
-    ASSERT_TRUE(bridge.bind_player("55", "room-end"));
+    ASSERT_TRUE(registry.assign("55", "room-end"));
+    ASSERT_TRUE(server.session_manager().bind_instance("55", "room-end"));
+    server.io_context().poll();
 
     boost::asio::write(
         client,

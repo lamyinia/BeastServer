@@ -1,0 +1,31 @@
+# 本地构建目录（CMake 产物、插件 .so、测试输出）
+build/
+
+# Conan 生成文件（应只在 build/ 内，勿提交）
+conan_toolchain.cmake
+conanbuild.sh
+conanrun.sh
+conanbuildenv-*.sh
+conanrunenv-*.sh
+deactivate_conan*.sh
+conandeps_legacy.cmake
+cmakedeps_macros.cmake
+CMakePresets.json
+CMakeUserPresets.json
+*Config.cmake
+*ConfigVersion.cmake
+*-config.cmake
+*-config-version.cmake
+*-relwithdebinfo-*.cmake
+*-Target-*.cmake
+*Targets.cmake
+Find*.cmake
+module-*.cmake
+
+# clangd / IDE（CMakeLists 会在配置后创建符号链接）
+compile_commands.json
+
+# 编辑器缓存
+.cache/
+.idea/
+.vscode/

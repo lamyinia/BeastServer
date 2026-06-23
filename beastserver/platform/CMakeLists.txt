@@ -1,4 +1,6 @@
 add_subdirectory(core)
+add_subdirectory(bizutil)
+add_subdirectory(ai)
 add_subdirectory(net)
 add_subdirectory(engine)
 add_subdirectory(rpc)

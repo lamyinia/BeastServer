@@ -1,6 +1,9 @@
 #pragma once
 
 #include "beast/platform/core/config/server_config.hpp"
+#include "beast/platform/bizutil/config/store.hpp"
+#include "beast/platform/ai/service/ai_service.hpp"
+#include "beast/platform/engine/ai/instance_ai_facade.hpp"
 #include "beast/platform/engine/dispatch/instance_event_bridge.hpp"
 #include "beast/platform/engine/dispatch/player_instance_registry.hpp"
 #include "beast/platform/engine/instance/instance_manager.hpp"
@@ -45,6 +48,10 @@ public:
         return player_registry_;
     }
     [[nodiscard]] RoomService& room_service() noexcept { return room_service_; }
+    [[nodiscard]] bizutil::config::BizConfigStore& biz_config() noexcept { return biz_config_; }
+    [[nodiscard]] const bizutil::config::BizConfigStore& biz_config() const noexcept {
+        return biz_config_;
+    }
     [[nodiscard]] const core::config::ServerConfig& config() const noexcept { return config_; }
     [[nodiscard]] const core::config::PluginsConfig& resolved_plugins() const noexcept {
         return resolved_plugins_;
@@ -55,9 +62,14 @@ private:
         const core::config::ServerConfig& config,
         const GameServerOptions& options);
 
+    [[nodiscard]] static bizutil::config::BizPaths resolve_biz_paths(
+        const core::config::ServerConfig& config,
+        const GameServerOptions& options);
+
     core::config::ServerConfig config_;
     GameServerOptions options_;
     core::config::PluginsConfig resolved_plugins_;
+    bizutil::config::BizPaths resolved_biz_paths_;
     bool running_{false};
 
     net::server::TcpServer tcp_server_;
@@ -67,6 +79,9 @@ private:
     engine::dispatch::PlayerInstanceRegistry player_registry_;
     engine::dispatch::InstanceEventBridge event_bridge_;
     engine::plugin::PluginHost plugin_host_;
+    bizutil::config::BizConfigStore biz_config_;
+    std::unique_ptr<ai::AiService> ai_service_;
+    std::unique_ptr<engine::ai::InstanceAiFacade> ai_facade_;
     RoomService room_service_;
     std::shared_ptr<rpc::RoomServiceGrpcImpl> room_grpc_impl_;
 };

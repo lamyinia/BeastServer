@@ -73,6 +73,8 @@ bool InstanceManager::create_instance(
     ctx.set_submit_event_fn([this](InstanceEvent event) { submit_event(std::move(event)); });
     ctx.set_notify_end_fn([this, instance_id]() { on_instance_ended(instance_id); });
     ctx.set_timer_service(timer_service_);
+    ctx.set_biz_config_store(biz_config_store_);
+    ctx.set_instance_ai(instance_ai_);
 
     auto instance = std::make_unique<Instance>(
         instance_id,
@@ -171,7 +173,6 @@ void InstanceManager::on_instance_ended(const InstanceId& instance_id) {
 
     if (carrier) {
         carrier->mark_instance_ended(instance_id);
-        carrier->remove_instance(instance_id);
     }
 
     if (removed && instance_ended_fn_) {

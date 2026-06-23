@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package beast.biz.test;
+
+message ExampleRow {
+  uint32 id = 1;
+  string index = 2;
+  string name = 3;
+}
+
+message ExampleTableConfig {
+  repeated ExampleRow rows = 1;
+}

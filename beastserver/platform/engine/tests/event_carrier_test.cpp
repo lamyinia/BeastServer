@@ -38,7 +38,7 @@ public:
 
 std::unique_ptr<instance::Instance> make_instance(
     const InstanceId& id,
-    CountingEngine* engine_ptr,
+    instance::IEngine* engine_ptr,
     std::vector<PlayerId> players = {}) {
     auto engine = std::unique_ptr<instance::IEngine>(engine_ptr);
     context::EngineContext ctx(id, players, nullptr);
@@ -94,27 +94,28 @@ TEST(EventCarrierTest, RemovesInstanceAfterNotifyEnd) {
 
     class EndingEngine final : public instance::IEngine {
     public:
-        explicit EndingEngine(context::EngineContext* ctx) : ctx_(ctx) {}
+        EndingEngine(carrier::EventCarrier* owner, InstanceId instance_id)
+            : owner_(owner)
+            , instance_id_(std::move(instance_id)) {}
 
         void on_event(const instance::InstanceEvent& /*event*/) override {
-            ctx_->notify_instance_end();
+            if (owner_) {
+                owner_->mark_instance_ended(instance_id_);
+            }
         }
 
-        context::EngineContext* ctx_{nullptr};
+        void on_stop(context::EngineContext& /*ctx*/) override {
+            stop_count.fetch_add(1, std::memory_order_relaxed);
+        }
+
+        carrier::EventCarrier* owner_{nullptr};
+        InstanceId instance_id_;
+        std::atomic<int> stop_count{0};
     };
 
-    context::EngineContext ctx("room-end", {}, nullptr);
-    ctx.set_notify_end_fn([&]() { carrier.mark_instance_ended("room-end"); });
-
-    auto engine = std::make_unique<EndingEngine>(&ctx);
-    auto instance = std::make_unique<instance::Instance>(
-        "room-end",
-        core::SimulationMode::EventDriven,
-        std::vector<PlayerId>{},
-        std::move(engine),
-        std::move(ctx));
-
-    ASSERT_TRUE(carrier.add_instance(std::move(instance)));
+    auto* engine = new EndingEngine(&carrier, "room-end");
+    ASSERT_TRUE(carrier.add_instance(make_instance("room-end", engine)));
+    wait_until([&]() { return carrier.instance_count() == 1; }, std::chrono::seconds(2));
 
     instance::InstanceEvent event;
     event.instance_id = "room-end";
@@ -122,6 +123,7 @@ TEST(EventCarrierTest, RemovesInstanceAfterNotifyEnd) {
     ASSERT_TRUE(carrier.submit_event(event));
 
     wait_until([&]() { return carrier.instance_count() == 0; }, std::chrono::seconds(2));
+    EXPECT_EQ(engine->stop_count.load(), 1);
     carrier.stop();
 }
 

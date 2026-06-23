@@ -25,9 +25,6 @@ public:
 
     void attach_instance_lifecycle();
 
-    bool bind_player(const PlayerId& player_id, const InstanceId& instance_id);
-    void unbind_player(const PlayerId& player_id);
-
     void register_route(net::dispatch::Router& router, const RouteId& route);
     [[nodiscard]] net::dispatch::RouteHandler make_forward_handler() const;
 
@@ -37,8 +34,6 @@ private:
         const net::channel::MessagePtr& msg) const;
 
     [[nodiscard]] InstanceId resolve_instance_id(const PlayerId& player_id) const;
-
-    void sync_session_binding(const PlayerId& player_id, const InstanceId& instance_id) const;
 
     net::session::SessionManager* session_manager_{nullptr};
     instance::InstanceManager* instance_manager_{nullptr};

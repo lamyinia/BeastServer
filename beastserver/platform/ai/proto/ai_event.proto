@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package beast.platform.ai;
+
+// AI 异步结果回投 Carrier 的内部事件 payload。
+message AiChatDoneEvent {
+  uint64 request_id = 1;
+  uint64 user_tag = 2;
+  bool ok = 3;
+  string content = 4;
+  int32 error_code = 5;
+  string error_message = 6;
+}
+
+message AiStreamChunkEvent {
+  uint64 request_id = 1;
+  uint64 user_tag = 2;
+  string delta = 3;
+  bool final = 4;
+}

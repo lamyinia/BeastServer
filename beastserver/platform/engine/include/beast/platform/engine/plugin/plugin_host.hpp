@@ -2,6 +2,7 @@
 
 #include "beast/platform/core/config/server_config.hpp"
 #include "beast/platform/core/types.hpp"
+#include "beast/platform/bizutil/config/registration.hpp"
 #include "beast/platform/engine/instance/engine_descriptor.hpp"
 #include "beast/platform/net/dispatch/router.hpp"
 #include "beast/platform/plugin/plugin_api.hpp"
@@ -13,7 +14,6 @@
 #include <vector>
 
 namespace beast::platform::engine::dispatch {
-class InstanceEventBridge;
 class PlayerInstanceRegistry;
 }
 
@@ -38,7 +38,6 @@ public:
         core::config::PluginsConfig plugins_config,
         instance::InstanceManager* instance_manager,
         net::dispatch::Router* router,
-        dispatch::InstanceEventBridge* event_bridge,
         net::session::SessionManager* session_manager = nullptr,
         dispatch::PlayerInstanceRegistry* player_registry = nullptr);
 
@@ -57,12 +56,17 @@ public:
     [[nodiscard]] const instance::EngineDescriptor* find_engine(const EngineName& engine_name) const;
     [[nodiscard]] std::size_t engine_count() const noexcept { return engines_.size(); }
     [[nodiscard]] std::size_t custom_route_count() const noexcept { return custom_routes_.size(); }
+    [[nodiscard]] const std::vector<bizutil::config::BizTableRegistration>& biz_table_registrations()
+        const noexcept {
+        return biz_table_registrations_;
+    }
 
 private:
     friend class ::beast::platform::plugin::ServerContext;
 
     bool register_engine(instance::EngineDescriptor descriptor);
     void register_route(RouteId route, net::dispatch::RouteHandler handler);
+    void register_biz_table(bizutil::config::BizTableRegistration registration);
 
     bool load_plugins_from_directory();
     bool load_shared_object(const std::filesystem::path& path);
@@ -75,7 +79,6 @@ private:
     core::config::PluginsConfig plugins_config_;
     instance::InstanceManager* instance_manager_{nullptr};
     net::dispatch::Router* router_{nullptr};
-    dispatch::InstanceEventBridge* event_bridge_{nullptr};
     net::session::SessionManager* session_manager_{nullptr};
     dispatch::PlayerInstanceRegistry* player_registry_{nullptr};
 
@@ -85,6 +88,7 @@ private:
     };
 
     std::vector<StaticPluginEntry> static_plugins_;
+    std::vector<bizutil::config::BizTableRegistration> biz_table_registrations_;
     std::map<EngineName, instance::EngineDescriptor> engines_;
     std::vector<std::pair<RouteId, net::dispatch::RouteHandler>> custom_routes_;
 

@@ -142,6 +142,86 @@ void parse_plugins(const nlohmann::json& root, PluginsConfig& out) {
     }
 }
 
+void parse_bizconfig(const nlohmann::json& root, BizConfigSettings& out) {
+    if (!root.contains("bizconfig")) {
+        return;
+    }
+
+    const auto& bizconfig = root.at("bizconfig");
+    if (!bizconfig.is_object()) {
+        throw std::invalid_argument("bizconfig must be an object");
+    }
+
+    assign_if_present(bizconfig, "enabled", out.enabled);
+    assign_if_present(bizconfig, "dir", out.dir);
+    assign_if_present(bizconfig, "manifest", out.manifest_file);
+    assign_if_present(bizconfig, "fail_on_missing", out.fail_on_missing);
+}
+
+void parse_ai_provider(const nlohmann::json& node, AiProviderSettings& out) {
+    assign_if_present(node, "api_key", out.api_key);
+    assign_if_present(node, "api_key_env", out.api_key_env);
+    assign_if_present(node, "access_key", out.access_key);
+    assign_if_present(node, "access_key_env", out.access_key_env);
+    assign_if_present(node, "secret_key", out.secret_key);
+    assign_if_present(node, "secret_key_env", out.secret_key_env);
+    assign_if_present(node, "chat_endpoint", out.chat_endpoint);
+    assign_if_present(node, "music_endpoint", out.music_endpoint);
+    assign_if_present(node, "embedding_endpoint", out.embedding_endpoint);
+    assign_if_present(node, "timeout_seconds", out.timeout_seconds);
+    assign_if_present(node, "max_concurrent", out.max_concurrent);
+    assign_if_present(node, "max_retries", out.max_retries);
+}
+
+void parse_ai_tos(const nlohmann::json& node, AiTosSettings& out) {
+    assign_if_present(node, "bucket", out.bucket);
+    assign_if_present(node, "region", out.region);
+    assign_if_present(node, "path_prefix", out.path_prefix);
+    assign_if_present(node, "auth", out.auth);
+    assign_if_present(node, "signed_url_ttl", out.signed_url_ttl);
+    assign_if_present(node, "cdn_domain", out.cdn_domain);
+}
+
+void parse_ai(const nlohmann::json& root, AiConfigSettings& out) {
+    if (!root.contains("ai")) {
+        return;
+    }
+
+    const auto& ai = root.at("ai");
+    if (!ai.is_object()) {
+        throw std::invalid_argument("ai must be an object");
+    }
+
+    assign_if_present(ai, "enabled", out.enabled);
+    assign_if_present(ai, "default_provider", out.default_provider);
+    assign_if_present(ai, "default_model", out.default_model);
+    assign_if_present(ai, "default_music_model", out.default_music_model);
+    assign_if_present(ai, "default_embedding_model", out.default_embedding_model);
+
+    if (ai.contains("providers") && ai.at("providers").is_object()) {
+        out.providers.clear();
+        for (const auto& [name, provider_node] : ai.at("providers").items()) {
+            AiProviderSettings provider;
+            parse_ai_provider(provider_node, provider);
+            out.providers.emplace(name, std::move(provider));
+        }
+    }
+
+    if (ai.contains("fallbacks") && ai.at("fallbacks").is_array()) {
+        out.fallbacks.clear();
+        for (const auto& item : ai.at("fallbacks")) {
+            AiFallbackSettings fb;
+            assign_if_present(item, "primary", fb.primary);
+            assign_if_present(item, "fallback", fb.fallback);
+            out.fallbacks.push_back(std::move(fb));
+        }
+    }
+
+    if (ai.contains("tos") && ai.at("tos").is_object()) {
+        parse_ai_tos(ai.at("tos"), out.tos);
+    }
+}
+
 ServerConfig parse_server_node(const nlohmann::json& server) {
     ServerConfig config;
 
@@ -260,6 +340,8 @@ Result<ServerConfig> load_server_config_from_file(const std::string& path) {
 
         ServerConfig config = parse_server_node(root.at("server"));
         parse_plugins(root, config.plugins);
+        parse_bizconfig(root, config.bizconfig);
+        parse_ai(root, config.ai);
         finalize_server_config(config);
         return config;
     } catch (const nlohmann::json::exception& ex) {

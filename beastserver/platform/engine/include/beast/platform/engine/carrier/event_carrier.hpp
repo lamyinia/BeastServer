@@ -1,5 +1,6 @@
 #pragma once
 
+#include "beast/platform/engine/carrier/carrier_event_queue.hpp"
 #include "beast/platform/engine/carrier/i_carrier.hpp"
 
 #include <atomic>
@@ -9,10 +10,8 @@
 #include <memory>
 #include <mutex>
 #include <queue>
-#include <string>
 #include <thread>
 #include <variant>
-#include <vector>
 
 namespace beast::platform::engine::carrier {
 
@@ -39,9 +38,11 @@ public:
     void mark_instance_ended(const InstanceId& instance_id) override;
 
 private:
-    struct SubmitEventTask {
-        instance::InstanceEvent event;
+    struct EventInstanceEntry {
+        std::unique_ptr<instance::Instance> instance;
+        bool pending_destroy{false};
     };
+
     struct AddInstanceTask {
         std::unique_ptr<instance::Instance> instance;
         std::uint32_t tick_hz{0};
@@ -50,14 +51,16 @@ private:
         InstanceId instance_id;
     };
 
-    using CarrierTask = std::variant<SubmitEventTask, AddInstanceTask, RemoveInstanceTask>;
+    using CarrierTask = std::variant<AddInstanceTask, RemoveInstanceTask>;
 
     void worker_loop();
     void process_task(CarrierTask& task);
-    void handle_submit_event(SubmitEventTask& task);
     void handle_add_instance(AddInstanceTask& task);
     void handle_remove_instance(RemoveInstanceTask& task);
-
+    void drain_event_ingress();
+    void dispatch_ingress_event(instance::InstanceEvent event);
+    void finalize_instance(const InstanceId& instance_id);
+    void drain_pending_tasks();
     bool enqueue(CarrierTask task);
 
     std::atomic<bool> running_{false};
@@ -66,9 +69,9 @@ private:
     std::condition_variable queue_cv_;
     std::queue<CarrierTask> queue_;
     std::uint32_t queue_capacity_;
+    InstanceEventIngress event_ingress_;
 
-    std::map<InstanceId, std::unique_ptr<instance::Instance>> instances_;
-    std::vector<InstanceId> ended_instances_;
+    std::map<InstanceId, EventInstanceEntry> instances_;
     std::atomic<std::size_t> instance_count_{0};
 };
 

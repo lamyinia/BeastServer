@@ -165,6 +165,7 @@ TEST(InstanceManagerTest, NotifiesWhenInstanceEnds) {
     ASSERT_TRUE(manager.submit_event(event));
 
     wait_until([&]() { return ended_count.load() == 1; }, std::chrono::seconds(2));
+    wait_until([&]() { return engine_ptr->stop_count.load() == 1; }, std::chrono::seconds(2));
     EXPECT_EQ(ended_id, "room-end");
     EXPECT_FALSE(manager.has_instance("room-end"));
 

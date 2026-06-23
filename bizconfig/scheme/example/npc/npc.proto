@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package beast.biz.example.npc;
+option go_package = "beast.biz.example.npc";
+
+message NpcRowServer {
+    uint32 id = 1;
+    string index = 2;
+    string name = 3;
+    string personality = 4;
+    string background = 5;
+    string speech_style = 6;
+    string default_model = 7;
+    string init_tags = 8;
+    string prompt_template = 9;
+}
+
+message NpcServerConfig {
+    repeated NpcRowServer rows = 1;
+}
+
+message NpcRowClient {
+    uint32 id = 1;
+    string index = 2;
+    string name = 3;
+    string personality = 4;
+    string background = 5;
+    string speech_style = 6;
+    string dialogue_examples = 7;
+    string tools = 8;
+    string client_icon = 9;
+}
+
+message NpcClientConfig {
+    repeated NpcRowClient rows = 1;
+}

@@ -35,6 +35,19 @@ void ServerContext::register_route(RouteId route, net::dispatch::RouteHandler ha
     }
 }
 
+void ServerContext::register_biz_table(
+    std::string logical_name,
+    std::function<std::unique_ptr<google::protobuf::Message>()> factory) {
+    if (!host_) {
+        return;
+    }
+
+    host_->register_biz_table(bizutil::config::BizTableRegistration{
+        .logical_name = std::move(logical_name),
+        .factory = std::move(factory),
+    });
+}
+
 bool ServerContext::create_instance(
     EngineName engine_name,
     InstanceId instance_id,

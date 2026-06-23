@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 project(beastserver LANGUAGES CXX)
 
+include(${CMAKE_SOURCE_DIR}/cmake/BeastPaths.cmake)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -37,4 +39,10 @@ add_subdirectory(plugins)
 add_executable(beastserver src/main.cpp)
 target_link_libraries(beastserver PRIVATE beast::server beast::core)
 target_compile_features(beastserver PRIVATE cxx_std_20)
+
+# 平台变更后须同步重编插件；否则 dlopen 可能因 ABI 不一致而挂死。
+get_property(_beast_plugin_targets GLOBAL PROPERTY BEAST_PLUGIN_TARGETS)
+if(_beast_plugin_targets)
+    add_dependencies(beastserver ${_beast_plugin_targets})
+endif()
 target_compile_definitions(beast_core PRIVATE BEASTSERVER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

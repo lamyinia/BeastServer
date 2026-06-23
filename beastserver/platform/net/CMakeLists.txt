@@ -3,7 +3,7 @@ find_package(GTest REQUIRED)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-set(BEAST_PROTO_DIR ${CMAKE_SOURCE_DIR}/proto)
+set(BEAST_PROTO_DIR ${BEAST_BIZ_PROTOCOL_PLATFORM_DIR})
 set(BEAST_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${BEAST_GENERATED_DIR})
 
@@ -47,7 +47,7 @@ add_library(beast_net STATIC
     src/auth/auth_handler.cpp
     src/dispatch/router.cpp
     src/dispatch/router_handler.cpp
-    src/transport/tcp_transport.cpp
+    src/channel/transport/tcp_transport.cpp
     src/session/session.cpp
     src/session/session_manager.cpp
     src/outbound/outbound_hub.cpp

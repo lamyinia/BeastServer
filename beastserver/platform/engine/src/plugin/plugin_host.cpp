@@ -1,7 +1,6 @@
 #include "beast/platform/engine/plugin/plugin_host.hpp"
 
 #include "beast/platform/core/log/logger.hpp"
-#include "beast/platform/engine/dispatch/instance_event_bridge.hpp"
 #include "beast/platform/engine/dispatch/player_instance_registry.hpp"
 #include "beast/platform/engine/instance/instance_manager.hpp"
 #include "beast/platform/plugin/server_context.hpp"
@@ -35,13 +34,11 @@ PluginHost::PluginHost(
     core::config::PluginsConfig plugins_config,
     instance::InstanceManager* instance_manager,
     net::dispatch::Router* router,
-    dispatch::InstanceEventBridge* event_bridge,
     net::session::SessionManager* session_manager,
     dispatch::PlayerInstanceRegistry* player_registry)
     : plugins_config_(std::move(plugins_config))
     , instance_manager_(instance_manager)
     , router_(router)
-    , event_bridge_(event_bridge)
     , session_manager_(session_manager)
     , player_registry_(player_registry) {}
 
@@ -57,6 +54,7 @@ void PluginHost::register_static_plugin(
 bool PluginHost::load_all() {
     engines_.clear();
     custom_routes_.clear();
+    biz_table_registrations_.clear();
 
     for (const auto& entry : static_plugins_) {
         invoke_plugin(entry.name, entry.init_fn, true);
@@ -145,6 +143,22 @@ void PluginHost::register_route(RouteId route, net::dispatch::RouteHandler handl
         return;
     }
     custom_routes_.emplace_back(std::move(route), std::move(handler));
+}
+
+void PluginHost::register_biz_table(bizutil::config::BizTableRegistration registration) {
+    if (registration.logical_name.empty() || !registration.factory) {
+        BEAST_LOG_WARN("PluginHost: invalid biz table registration");
+        return;
+    }
+
+    for (const auto& existing : biz_table_registrations_) {
+        if (existing.logical_name == registration.logical_name) {
+            BEAST_LOG_WARN("PluginHost: duplicate biz table {}", registration.logical_name);
+            return;
+        }
+    }
+
+    biz_table_registrations_.push_back(std::move(registration));
 }
 
 void PluginHost::invoke_plugin(

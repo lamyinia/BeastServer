@@ -48,5 +48,10 @@ Thumbs.db
 # Logs
 *.log
 
+# Go tool binaries
+tools/biz_export/biz_export
+
 # SVN working copy metadata (use Git for version control)
 .svn/
+
+**/server.json

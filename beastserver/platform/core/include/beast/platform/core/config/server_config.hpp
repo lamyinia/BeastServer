@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace beast::platform::core::config {
@@ -72,6 +73,7 @@ struct LoopActorConfig {
     std::uint32_t count{2};
     std::uint32_t tick_hz{30}; // 实例未指定 tick_hz 时的默认值
     std::uint32_t max_tick_hz{128};
+    std::uint32_t max_catchup_ticks_per_frame{3}; // 单轮 worker 每 instance 最多补帧数
     std::uint32_t queue_capacity{8192};
 };
 
@@ -111,7 +113,54 @@ struct PluginsConfig {
     [[nodiscard]] bool should_load(std::string_view plugin_name) const;
 };
 
-// 仅服务器/平台级配置，不包含任何玩法或策划数据。
+struct AiProviderSettings {
+    std::string api_key;
+    std::string api_key_env{"BEAST_AI_API_KEY"};
+    std::string access_key;
+    std::string access_key_env{"BEAST_AI_ACCESS_KEY"};
+    std::string secret_key;
+    std::string secret_key_env{"BEAST_AI_SECRET_KEY"};
+    std::string chat_endpoint;
+    std::string music_endpoint;
+    std::string embedding_endpoint;
+    int timeout_seconds = 600;
+    int max_concurrent = 10;
+    int max_retries = 2;
+};
+
+struct AiFallbackSettings {
+    std::string primary;
+    std::string fallback;
+};
+
+struct AiTosSettings {
+    std::string bucket;
+    std::string region{"cn-beijing"};
+    std::string path_prefix{"/game/bgm"};
+    bool auth{true};
+    std::uint32_t signed_url_ttl{300};
+    std::string cdn_domain;
+};
+
+struct AiConfigSettings {
+    bool enabled = false;
+    std::string default_provider{"volcengine"};
+    std::string default_model;
+    std::string default_music_model{"doubao-music"};
+    std::string default_embedding_model{"doubao-embedding"};
+    std::unordered_map<std::string, AiProviderSettings> providers;
+    std::vector<AiFallbackSettings> fallbacks;
+    AiTosSettings tos;
+};
+
+// 策划表 runtime 目录；表数据本身在 bizconfig 导出产物中，不在 server.json。
+struct BizConfigSettings {
+    bool enabled{true};
+    std::string dir{"bizconfig/server"};
+    std::string manifest_file{"manifest.json"};
+    bool fail_on_missing{true};
+};
+
 struct ServerConfig {
     std::string node_id;
     std::string host;
@@ -124,6 +173,8 @@ struct ServerConfig {
     RuntimeConfig runtime;
     DebugConfig debug;
     PluginsConfig plugins;
+    BizConfigSettings bizconfig;
+    AiConfigSettings ai;
 };
 
 void finalize_server_config(ServerConfig& config);

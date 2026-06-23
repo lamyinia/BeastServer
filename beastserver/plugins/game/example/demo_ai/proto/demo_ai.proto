@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package beast.demo.ai;
+
+message AskRequest {
+  string text = 1;
+  bool stream = 2;
+}
+
+message ReplyPush {
+  uint64 request_id = 1;
+  string text = 2;
+}
+
+message StreamPush {
+  uint64 request_id = 1;
+  string delta = 2;
+  bool final = 3;
+}
+
+message ErrorPush {
+  uint64 request_id = 1;
+  string message = 2;
+}

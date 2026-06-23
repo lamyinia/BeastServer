@@ -13,8 +13,16 @@
 #include <memory>
 #include <vector>
 
+namespace beast::platform::bizutil::config {
+class BizConfigStore;
+}
+
 namespace beast::platform::engine::timer {
 class TimerService;
+}
+
+namespace beast::platform::engine::ai {
+class InstanceAiFacade;
 }
 
 namespace beast::platform::engine::context {
@@ -32,9 +40,18 @@ public:
     void set_submit_event_fn(SubmitEventFn fn) { submit_event_fn_ = std::move(fn); }
     void set_notify_end_fn(NotifyEndFn fn) { notify_end_fn_ = std::move(fn); }
     void set_timer_service(timer::TimerService* timer_service) { timer_service_ = timer_service; }
+    void set_biz_config_store(const bizutil::config::BizConfigStore* store) noexcept {
+        biz_config_store_ = store;
+    }
+    void set_instance_ai(ai::InstanceAiFacade* instance_ai) noexcept { instance_ai_ = instance_ai; }
 
     [[nodiscard]] const InstanceId& instance_id() const noexcept { return instance_id_; }
     [[nodiscard]] const std::vector<PlayerId>& player_ids() const noexcept { return player_ids_; }
+    [[nodiscard]] const bizutil::config::BizConfigStore* biz_config() const noexcept {
+        return biz_config_store_;
+    }
+    [[nodiscard]] ai::InstanceAiFacade* ai() noexcept { return instance_ai_; }
+    [[nodiscard]] const ai::InstanceAiFacade* ai() const noexcept { return instance_ai_; }
 
     void send(
         const PlayerId& player_id,
@@ -78,6 +95,8 @@ private:
     std::vector<PlayerId> player_ids_;
     net::outbound::OutboundHub* outbound_hub_{nullptr};
     timer::TimerService* timer_service_{nullptr};
+    const bizutil::config::BizConfigStore* biz_config_store_{nullptr};
+    ai::InstanceAiFacade* instance_ai_{nullptr};
     SubmitEventFn submit_event_fn_;
     NotifyEndFn notify_end_fn_;
 };

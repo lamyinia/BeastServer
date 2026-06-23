@@ -1,4 +1,3 @@
-#include "beast/platform/engine/dispatch/instance_event_bridge.hpp"
 #include "beast/platform/engine/instance/instance_manager.hpp"
 #include "beast/platform/engine/plugin/plugin_host.hpp"
 #include "beast/platform/net/dispatch/router.hpp"
@@ -104,9 +103,8 @@ std::filesystem::path built_plugins_dir() {
 TEST(PluginHostTest, LoadsStaticPluginsAndCreatesInstances) {
     instance::InstanceManager manager(test_runtime(), nullptr);
     net::dispatch::Router router;
-    dispatch::InstanceEventBridge bridge(nullptr, &manager);
 
-    engine::plugin::PluginHost host({}, &manager, &router, &bridge);
+    engine::plugin::PluginHost host({}, &manager, &router);
     host.register_static_plugin("static_event", init_static_event_plugin);
     host.register_static_plugin("static_tick", init_static_tick_plugin);
 
@@ -141,13 +139,12 @@ TEST(PluginHostTest, LoadsSharedPluginsFromBuildDirectory) {
 
     instance::InstanceManager manager(test_runtime(), nullptr);
     net::dispatch::Router router;
-    dispatch::InstanceEventBridge bridge(nullptr, &manager);
 
     core::config::PluginsConfig plugins_config;
     plugins_config.dir = plugins_dir.string();
     plugins_config.auto_load = true;
 
-    engine::plugin::PluginHost host(plugins_config, &manager, &router, &bridge);
+    engine::plugin::PluginHost host(plugins_config, &manager, &router);
     manager.start();
     ASSERT_TRUE(host.load_all());
     EXPECT_GE(host.engine_count(), 2u);
@@ -167,9 +164,8 @@ TEST(PluginHostTest, LoadsSharedPluginsFromBuildDirectory) {
 TEST(PluginHostTest, RejectsDuplicateEngineName) {
     instance::InstanceManager manager(test_runtime(), nullptr);
     net::dispatch::Router router;
-    dispatch::InstanceEventBridge bridge(nullptr, &manager);
 
-    engine::plugin::PluginHost host({}, &manager, &router, &bridge);
+    engine::plugin::PluginHost host({}, &manager, &router);
     host.register_static_plugin("dup_a", init_static_event_plugin);
     host.register_static_plugin("dup_b", init_static_event_plugin);
 

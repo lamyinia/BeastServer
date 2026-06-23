@@ -61,5 +61,51 @@
   "plugins": {
     "dir": "plugins",
     "auto_load": true
+  },
+  "bizconfig": {
+    "enabled": false,
+    "dir": "bizconfig/server",
+    "manifest": "manifest.json",
+    "fail_on_missing": false
+  },
+  "ai": {
+    "enabled": false,
+    "default_provider": "volcengine",
+    "default_model": "doubao-seed-2-0-pro-260215",
+    "default_music_model": "doubao-music",
+    "default_embedding_model": "doubao-embedding-vision-251215",
+    "providers": {
+      "volcengine": {
+        "api_key": "",
+        "access_key": "",
+        "secret_key": "",
+        "api_key_env": "BEAST_AI_API_KEY",
+        "access_key_env": "BEAST_AI_ACCESS_KEY",
+        "secret_key_env": "BEAST_AI_SECRET_KEY",
+        "chat_endpoint": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+        "embedding_endpoint": "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal",
+        "timeout_seconds": 600,
+        "max_concurrent": 10,
+        "max_retries": 2
+      },
+      "openai": {
+        "api_key": "",
+        "api_key_env": "OPENAI_API_KEY",
+        "chat_endpoint": "https://api.openai.com/v1/chat/completions",
+        "embedding_endpoint": "https://api.openai.com/v1/embeddings",
+        "timeout_seconds": 300,
+        "max_concurrent": 10,
+        "max_retries": 2
+      }
+    },
+    "fallbacks": [],
+    "tos": {
+      "bucket": "",
+      "region": "cn-beijing",
+      "path_prefix": "/game/bgm",
+      "auth": true,
+      "signed_url_ttl": 300,
+      "cdn_domain": ""
+    }
   }
 }

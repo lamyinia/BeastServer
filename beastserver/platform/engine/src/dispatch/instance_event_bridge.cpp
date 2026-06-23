@@ -40,30 +40,6 @@ void InstanceEventBridge::attach_instance_lifecycle() {
     });
 }
 
-bool InstanceEventBridge::bind_player(const PlayerId& player_id, const InstanceId& instance_id) {
-    if (player_registry_) {
-        if (!player_registry_->assign(player_id, instance_id)) {
-            return false;
-        }
-        sync_session_binding(player_id, instance_id);
-        return true;
-    }
-
-    if (!session_manager_) {
-        return false;
-    }
-    return session_manager_->bind_instance(player_id, instance_id);
-}
-
-void InstanceEventBridge::unbind_player(const PlayerId& player_id) {
-    if (player_registry_) {
-        player_registry_->unassign(player_id);
-    }
-    if (session_manager_) {
-        session_manager_->unbind_instance(player_id);
-    }
-}
-
 void InstanceEventBridge::register_route(net::dispatch::Router& router, const RouteId& route) {
     router.register_route(route, make_forward_handler());
 }
@@ -89,15 +65,6 @@ InstanceId InstanceEventBridge::resolve_instance_id(const PlayerId& player_id) c
     }
 
     return {};
-}
-
-void InstanceEventBridge::sync_session_binding(
-    const PlayerId& player_id,
-    const InstanceId& instance_id) const {
-    if (!session_manager_) {
-        return;
-    }
-    session_manager_->bind_instance(player_id, instance_id);
 }
 
 void InstanceEventBridge::handle_message(

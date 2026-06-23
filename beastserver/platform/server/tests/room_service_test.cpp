@@ -42,7 +42,7 @@ TEST(RoomServiceTest, CreatesInstanceAndAssignsPlayersWithoutSession) {
 
     engine::instance::InstanceManager manager(test_runtime(), nullptr);
     engine::dispatch::PlayerInstanceRegistry registry;
-    engine::plugin::PluginHost host({}, &manager, nullptr, nullptr);
+    engine::plugin::PluginHost host({}, &manager, nullptr);
     host.register_static_plugin("room_test", init_room_test_plugin);
 
     manager.start();
@@ -68,7 +68,7 @@ TEST(RoomServiceTest, CreatesInstanceAndAssignsPlayersWithoutSession) {
 TEST(RoomServiceTest, RejectsUnknownEngine) {
     engine::instance::InstanceManager manager(test_runtime(), nullptr);
     engine::dispatch::PlayerInstanceRegistry registry;
-    engine::plugin::PluginHost host({}, &manager, nullptr, nullptr);
+    engine::plugin::PluginHost host({}, &manager, nullptr);
 
     manager.start();
     server::RoomService room_service(&host, &registry);
@@ -87,7 +87,7 @@ TEST(RoomServiceTest, RejectsUnknownEngine) {
 TEST(RoomServiceTest, RejectsPlayerAlreadyInAnotherInstance) {
     engine::instance::InstanceManager manager(test_runtime(), nullptr);
     engine::dispatch::PlayerInstanceRegistry registry;
-    engine::plugin::PluginHost host({}, &manager, nullptr, nullptr);
+    engine::plugin::PluginHost host({}, &manager, nullptr);
     host.register_static_plugin("room_test", init_room_test_plugin);
 
     manager.start();

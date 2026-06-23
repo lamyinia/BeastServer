@@ -1,6 +1,10 @@
 #include "beast/platform/server/game_server.hpp"
 
+#include "beast/platform/ai/service/ai_config.hpp"
+#include "beast/platform/ai/service/ai_service.hpp"
+#include "beast/platform/bizutil/config/paths.hpp"
 #include "beast/platform/core/log/logger.hpp"
+#include "beast/platform/engine/ai/instance_ai_facade.hpp"
 #include "beast/platform/net/channel/channel_pipeline.hpp"
 
 #include <cstdlib>
@@ -67,10 +71,19 @@ core::config::PluginsConfig GameServer::resolve_plugins_config(
     return plugins;
 }
 
+bizutil::config::BizPaths GameServer::resolve_biz_paths(
+    const core::config::ServerConfig& config,
+    const GameServerOptions& options) {
+    bizutil::config::PathResolveOptions resolve_options;
+    resolve_options.config_file_path = options.config_file_path;
+    return bizutil::config::resolve_biz_paths(config.bizconfig, resolve_options);
+}
+
 GameServer::GameServer(core::config::ServerConfig config, GameServerOptions options)
     : config_(std::move(config))
     , options_(std::move(options))
     , resolved_plugins_(resolve_plugins_config(config_, options_))
+    , resolved_biz_paths_(resolve_biz_paths(config_, options_))
     , tcp_server_(config_.net.tcp)
     , grpc_server_(config_.grpc.port)
     , instance_manager_(config_.runtime, &tcp_server_.outbound_hub())
@@ -84,11 +97,27 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
           resolved_plugins_,
           &instance_manager_,
           &tcp_server_.router(),
-          &event_bridge_,
           &tcp_server_.session_manager(),
           &player_registry_)
     , room_service_(&plugin_host_, &player_registry_) {
     instance_manager_.set_timer_service(&timer_service_);
+
+    if (config_.ai.enabled) {
+        const auto ai_config = ai::AiConfig::from_settings(config_.ai);
+        ai_service_ = std::make_unique<ai::AiService>(ai_config);
+        ai_facade_ = std::make_unique<engine::ai::InstanceAiFacade>(
+            ai_service_.get(),
+            [this](const engine::instance::InstanceEvent& event) {
+                return instance_manager_.submit_event(event);
+            });
+        instance_manager_.set_instance_ai_facade(ai_facade_.get());
+        BEAST_LOG_INFO(
+            "AI service enabled provider={} model={}",
+            config_.ai.default_provider,
+            config_.ai.default_model);
+    } else {
+        BEAST_LOG_INFO("AI service disabled in server.json");
+    }
 
     tcp_server_.set_on_authenticated([this](const PlayerId& player_id, const std::shared_ptr<net::channel::IChannel>& channel) {
         // gRPC 已写入 Registry；auth 时同步 Session，并在当前连接 strand 上立即写入 pipeline 缓存。
@@ -110,11 +139,13 @@ void GameServer::start() {
     }
 
     BEAST_LOG_INFO(
-        "GameServer starting node={} tcp_port={} grpc_port={} plugins_dir={}",
+        "GameServer starting node={} tcp_port={} grpc_port={} plugins_dir={} bizconfig_dir={} manifest={}",
         config_.node_id,
         config_.net.tcp.port,
         config_.grpc.port,
-        resolved_plugins_.dir);
+        resolved_plugins_.dir,
+        resolved_biz_paths_.server_dir.string(),
+        resolved_biz_paths_.manifest_path.string());
 
     instance_manager_.start();
     timer_service_.start();
@@ -122,6 +153,27 @@ void GameServer::start() {
     if (!plugin_host_.load_all()) {
         BEAST_LOG_ERROR("GameServer plugin load failed");
     }
+
+    if (config_.bizconfig.enabled) {
+        bizutil::config::LoadOptions load_options;
+        load_options.fail_on_missing = config_.bizconfig.fail_on_missing;
+        const auto load_result = biz_config_.load(
+            resolved_biz_paths_,
+            plugin_host_.biz_table_registrations(),
+            load_options);
+        if (!load_result.ok) {
+            for (const auto& error : load_result.errors) {
+                BEAST_LOG_ERROR("BizConfig load failed: {}", error.to_string());
+            }
+            if (config_.bizconfig.fail_on_missing) {
+                return;
+            }
+        }
+    } else {
+        BEAST_LOG_INFO("BizConfig disabled in server.json");
+    }
+
+    instance_manager_.set_biz_config_store(&biz_config_);
 
     event_bridge_.attach_instance_lifecycle();
     plugin_host_.wire_routes();
@@ -134,7 +186,7 @@ void GameServer::start() {
 
     running_ = true;
     BEAST_LOG_INFO(
-        "GameServer ready tcp_port={} grpc_port={} engines={}",
+        "GameServer ready tcp_port={} grpc_port={} gameplay_count={}",
         tcp_server_.listen_port(),
         config_.grpc.port,
         plugin_host_.engine_count());
@@ -150,6 +202,8 @@ void GameServer::stop() {
     tcp_server_.stop();
     timer_service_.stop();
     instance_manager_.stop();
+    ai_facade_.reset();
+    ai_service_.reset();
     running_ = false;
     BEAST_LOG_INFO("GameServer stopped");
 }

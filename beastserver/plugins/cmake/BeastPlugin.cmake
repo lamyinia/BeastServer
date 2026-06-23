@@ -6,7 +6,7 @@
 # 约定：每个玩法一个子目录 plugins/<name>/CMakeLists.txt，根 CMake 自动 add_subdirectory。
 function(beast_add_plugin PLUGIN_NAME)
     set(options "")
-    set(one_value "")
+    set(one_value PROTO_DIR)
     set(multi_value SOURCES PROTOS)
     cmake_parse_arguments(P "${options}" "${one_value}" "${multi_value}" ${ARGN})
 
@@ -20,6 +20,9 @@ function(beast_add_plugin PLUGIN_NAME)
     set(_proto_target "")
     if(P_PROTOS)
         set(_proto_dir "${CMAKE_CURRENT_SOURCE_DIR}/proto")
+        if(P_PROTO_DIR)
+            set(_proto_dir "${P_PROTO_DIR}")
+        endif()
         set(_gen_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
         file(MAKE_DIRECTORY "${_gen_dir}")
 
@@ -51,6 +54,7 @@ function(beast_add_plugin PLUGIN_NAME)
 
     add_library(${_target} SHARED ${P_SOURCES})
     add_library(${_alias} ALIAS ${_target})
+    set_property(GLOBAL APPEND PROPERTY BEAST_PLUGIN_TARGETS "${_target}")
 
     target_include_directories(${_target} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     target_link_libraries(${_target} PRIVATE beast::engine)
