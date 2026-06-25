@@ -10,6 +10,7 @@ namespace beast::platform::engine::instance {
 struct InstanceEvent {
     InstanceId instance_id;
     PlayerId player_id;
+    ActorId actor_id;
     RouteId route;
     std::vector<std::uint8_t> payload;
     std::uint64_t client_seq{0};

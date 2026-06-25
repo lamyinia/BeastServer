@@ -18,3 +18,35 @@ message AiStreamChunkEvent {
   string delta = 3;
   bool final = 4;
 }
+
+enum AiToolLoopFailReason {
+  AI_TOOL_LOOP_FAIL_UNKNOWN = 0;
+  AI_TOOL_LOOP_FAIL_DISABLED = 1;
+  AI_TOOL_LOOP_FAIL_MAX_ROUNDS = 2;
+  AI_TOOL_LOOP_FAIL_LLM_ERROR = 3;
+}
+
+message AiToolInvokeEvent {
+  uint64 request_id = 1;
+  uint64 user_tag = 2;
+  string tool_call_id = 3;
+  string name = 4;
+  string arguments_json = 5;
+  uint32 invoke_index = 6;
+  uint32 invoke_total = 7;
+}
+
+message AiToolLoopDoneEvent {
+  uint64 request_id = 1;
+  uint64 user_tag = 2;
+  string content = 3;
+  string reasoning_content = 4;
+  uint32 llm_rounds = 5;
+}
+
+message AiToolLoopFailedEvent {
+  uint64 request_id = 1;
+  uint64 user_tag = 2;
+  AiToolLoopFailReason reason = 3;
+  string message = 4;
+}

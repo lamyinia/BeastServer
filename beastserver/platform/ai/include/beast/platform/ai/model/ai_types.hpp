@@ -86,6 +86,12 @@ struct ContentPart {
     std::string media_type;         // image MIME type (e.g. "image/png")
 };
 
+struct ToolCall {
+    std::string id;
+    std::string name;
+    std::string arguments_json;
+};
+
 struct Message {
     Role role = Role::User;
     std::string content;                    // 简单文本内容
@@ -93,6 +99,7 @@ struct Message {
     std::string tool_call_id;               // role == Tool 时
     std::string name;                       // tool name
     std::string reasoning_content;          // 深度思考思维链（role==Assistant 时携带）
+    std::vector<ToolCall> tool_calls;         // role == Assistant 且 function calling 时
 
     // 便捷构造
     static Message system(const std::string& text) {
@@ -103,6 +110,24 @@ struct Message {
     }
     static Message assistant(const std::string& text) {
         return {Role::Assistant, text};
+    }
+    static Message assistant_tool_calls(
+        std::string content,
+        std::vector<ToolCall> calls,
+        std::string reasoning = {}) {
+        Message m{Role::Assistant, std::move(content)};
+        m.tool_calls = std::move(calls);
+        m.reasoning_content = std::move(reasoning);
+        return m;
+    }
+    static Message tool_result(
+        const std::string& tool_call_id,
+        const std::string& name,
+        const std::string& result_json) {
+        Message m{Role::Tool, result_json};
+        m.tool_call_id = tool_call_id;
+        m.name = name;
+        return m;
     }
     static Message assistant_with_reasoning(const std::string& text, const std::string& reasoning) {
         Message m{Role::Assistant, text};
@@ -128,12 +153,6 @@ struct FunctionDef {
 struct ToolDef {
     enum Type { Function } type = Function;
     FunctionDef function;
-};
-
-struct ToolCall {
-    std::string id;
-    std::string name;
-    std::string arguments_json;
 };
 
 // ==================== Usage ====================

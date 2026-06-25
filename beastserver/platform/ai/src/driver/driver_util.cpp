@@ -28,6 +28,28 @@ std::string build_chat_body(const ChatRequest& req, bool stream) {
             m["reasoning_content"] = msg.reasoning_content;
         }
 
+        if (msg.role == Role::Assistant && !msg.tool_calls.empty()) {
+            auto& tcs = m["tool_calls"] = json::array();
+            for (const auto& call : msg.tool_calls) {
+                json tc;
+                tc["id"] = call.id;
+                tc["type"] = "function";
+                tc["function"]["name"] = call.name;
+                tc["function"]["arguments"] = call.arguments_json;
+                tcs.push_back(std::move(tc));
+            }
+            if (msg.content.empty()) {
+                m["content"] = nullptr;
+            }
+        }
+
+        if (msg.role == Role::Tool) {
+            m["tool_call_id"] = msg.tool_call_id;
+            if (!msg.name.empty()) {
+                m["name"] = msg.name;
+            }
+        }
+
         if (msg.parts.empty()) {
             m["content"] = msg.content;
         } else {

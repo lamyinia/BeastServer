@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package beast.board.riichi4p;
+
+// 服务端 → 客户端：bot 打牌/立直结果（route: riichi4p.turn_action_notify）
+message TurnActionNotify {
+  uint64 request_id = 1;
+  int32 seat = 2;
+  string kind = 3;  // discard | riichi
+  string tile = 4;
+}

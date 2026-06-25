@@ -264,7 +264,7 @@ BEAST_PLUGIN_EXPORT void beast_plugin_init(beast::platform::plugin::ServerContex
 
 - **EventDriven 全流程**：[`plugins/game/example/demo_event/plugin.cpp`](beastserver/plugins/game/example/demo_event/plugin.cpp)（`ping` 局内路由）
 - **FixedTick**：[`plugins/game/example/demo_tick/plugin.cpp`](beastserver/plugins/game/example/demo_tick/plugin.cpp)
-- **Proto 示例**：[`bizconfig/protocol/game/example/demo_event.proto`](bizconfig/protocol/game/example/demo_event.proto)
+- **Proto 示例**：[`bizconfig/protocol/game/example/demo_event/demo_event.proto`](bizconfig/protocol/game/example/demo_event/demo_event.proto)
 
 ---
 

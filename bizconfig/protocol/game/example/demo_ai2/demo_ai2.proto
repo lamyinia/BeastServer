@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package beast.demo.ai2;
+
+// 服务端 → 客户端：Decision 完成并 apply 后的摘要（route: demo.ai2.decision_result）
+message DecisionResultNotify {
+  uint64 request_id = 1;
+  // ack | pick_route | squad_plan | loadout
+  string case_name = 2;
+  string payload_json = 3;
+}

@@ -27,12 +27,29 @@ namespace fs = std::filesystem;
     return config_dir;
 }
 
+[[nodiscard]] bool directory_has_shared_plugins(const fs::path& dir) {
+    if (!fs::exists(dir) || !fs::is_directory(dir)) {
+        return false;
+    }
+
+    for (const auto& entry : fs::directory_iterator(dir)) {
+        if (!entry.is_regular_file()) {
+            continue;
+        }
+        const auto ext = entry.path().extension();
+        if (ext == ".so" || ext == ".dylib") {
+            return true;
+        }
+    }
+    return false;
+}
+
 [[nodiscard]] fs::path first_existing_plugins_dir(
     const fs::path& repo_root,
     const fs::path& configured_relative) {
     const fs::path candidates[] = {
         repo_root / "build/RelWithDebInfo/plugins",
-        repo_root / configured_relative,
+        repo_root / "build/plugins",
         fs::current_path() / "plugins",
         repo_root / configured_relative,
     };
@@ -41,12 +58,21 @@ namespace fs = std::filesystem;
         if (candidate.empty()) {
             continue;
         }
-        if (fs::exists(candidate) && fs::is_directory(candidate)) {
-            return candidate;
+        if (directory_has_shared_plugins(candidate)) {
+            return candidate.lexically_normal();
         }
     }
 
-    return repo_root / configured_relative;
+    for (const auto& candidate : candidates) {
+        if (candidate.empty()) {
+            continue;
+        }
+        if (fs::exists(candidate) && fs::is_directory(candidate)) {
+            return candidate.lexically_normal();
+        }
+    }
+
+    return (repo_root / configured_relative).lexically_normal();
 }
 
 } // namespace

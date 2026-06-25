@@ -1,122 +1,155 @@
 #include "engine/demo_ai_engine.hpp"
 
-#include "beast/platform/ai/routes.hpp"
-#include "beast/platform/engine/context/engine_context.hpp"
-#include "beast/platform/engine/ai/instance_ai_facade.hpp"
+#include "beast/platform/core/log/logger.hpp"
+#include "beast/platform/engine/ai/ai_receipt.hpp"
 
-#include "ai_event.pb.h"
-#include "demo_ai.pb.h"
-
-#include <memory>
+#include <algorithm>
 
 namespace beast::demo::ai {
-namespace {
 
-void send_error(
-    beast::platform::engine::context::EngineContext* ctx,
-    const beast::platform::engine::instance::InstanceEvent& event,
-    const std::uint64_t request_id,
-    const std::string& message) {
-    if (!ctx || event.player_id.empty()) {
-        return;
-    }
-
-    ErrorPush push;
-    push.set_request_id(request_id);
-    push.set_message(message);
-    ctx->send(event.player_id, "demo.ai.error", push);
+beast::platform::engine::ai::AiReplyTarget DemoAiEngine::ai_relay_target() const {
+    return {};
 }
 
-} // namespace
+void DemoAiEngine::register_ai_function_tools(
+    beast::platform::engine::ai::AiToolRegistry& /*tools*/) {}
 
-void DemoAiEngine::on_start(beast::platform::engine::context::EngineContext& ctx) {
-    ctx_ = &ctx;
+void DemoAiEngine::random_walk_target() {
+    static constexpr int kDirections[4][2] = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}};
+    std::uniform_int_distribution<int> dir_dist(0, 3);
+    const int dir = dir_dist(rng_);
+    target_.x = std::clamp(
+        target_.x + kDirections[dir][0],
+        0,
+        TargetState::kMapSize - 1);
+    target_.y = std::clamp(
+        target_.y + kDirections[dir][1],
+        0,
+        TargetState::kMapSize - 1);
 }
 
-void DemoAiEngine::handle_ask(const beast::platform::engine::instance::InstanceEvent& event) {
-    AskRequest request;
-    if (!request.ParseFromArray(
-            event.payload.data(),
-            static_cast<int>(event.payload.size()))) {
+bool DemoAiEngine::target_in_attack_square(const int attack_x, const int attack_y) const noexcept {
+    return target_.x >= attack_x
+        && target_.x < attack_x + TargetState::kAttackSquareSize
+        && target_.y >= attack_y
+        && target_.y < attack_y + TargetState::kAttackSquareSize;
+}
+
+void DemoAiEngine::try_submit_hunt_request() {
+    if (!test_active_ || awaiting_receipt_ || target_.hp <= 0
+        || ai_requests_sent_ >= kMaxAiRequests) {
         return;
     }
 
-    auto* ai = ctx_->ai();
-    if (!ai || !ai->available()) {
-        send_error(ctx_, event, 0, "AI service unavailable");
-        return;
-    }
-
-    platform::ai::ChatRequest chat;
-    chat.messages = {
-        beast::platform::ai::Message::system(
-            "You are a helpful game NPC. Reply briefly in Chinese."),
-        beast::platform::ai::Message::user(request.text()),
+    HuntEvent::Request request{
+        .target_x = target_.x,
+        .target_y = target_.y,
+        .target_hp = target_.hp,
+        .map_size = TargetState::kMapSize,
+        .attack_square_size = TargetState::kAttackSquareSize,
+        .requests_remaining = kMaxAiRequests - ai_requests_sent_,
     };
 
-    if (request.stream()) {
-        (void)ai->chat_stream(*ctx_, std::move(chat));
+    const beast::platform::ai::AiRequestId request_id =
+        beast::platform::engine::ai::request_receipt<HuntEvent>(ai_host(), request);
+    if (request_id == 0) {
+        BEAST_LOG_WARN("demo_ai hunt request_receipt failed pos=({},{})", target_.x, target_.y);
         return;
     }
 
-    (void)ai->chat(*ctx_, std::move(chat));
+    awaiting_receipt_ = true;
+    ++ai_requests_sent_;
+    BEAST_LOG_INFO(
+        "demo_ai hunt request={} round={}/{} target=({},{}) hp={}",
+        request_id,
+        ai_requests_sent_,
+        kMaxAiRequests,
+        target_.x,
+        target_.y,
+        target_.hp);
 }
 
-void DemoAiEngine::handle_ai_stream_chunk(
-    const beast::platform::engine::instance::InstanceEvent& event) {
-    platform::ai::AiStreamChunkEvent chunk;
-    if (!chunk.ParseFromArray(
-            event.payload.data(),
-            static_cast<int>(event.payload.size()))) {
+void DemoAiEngine::on_hunt_receipt(const HuntReceiptResult& result) {
+    awaiting_receipt_ = false;
+
+    if (!result.ok) {
+        BEAST_LOG_WARN(
+            "demo_ai hunt receipt failed request={} msg={}",
+            result.request_id,
+            result.error_message);
         return;
     }
 
-    if (event.player_id.empty()) {
+    const bool hit = target_in_attack_square(result.attack_x, result.attack_y);
+    if (hit) {
+        --target_.hp;
+    }
+
+    BEAST_LOG_INFO(
+        "demo_ai hunt receipt request={} attack=({},{}) target=({},{}) hit={} hp={}",
+        result.request_id,
+        result.attack_x,
+        result.attack_y,
+        target_.x,
+        target_.y,
+        hit,
+        target_.hp);
+
+    if (target_.hp <= 0) {
+        test_active_ = false;
+        BEAST_LOG_INFO(
+            "demo_ai hunt success in {} requests",
+            ai_requests_sent_);
         return;
     }
 
-    StreamPush push;
-    push.set_request_id(chunk.request_id());
-    push.set_delta(chunk.delta());
-    push.set_final(chunk.final());
-    ctx_->send(event.player_id, "demo.ai.stream", push);
+    if (ai_requests_sent_ >= kMaxAiRequests) {
+        test_active_ = false;
+        BEAST_LOG_WARN(
+            "demo_ai hunt failed: used all {} requests, target hp={}",
+            kMaxAiRequests,
+            target_.hp);
+    }
 }
 
-void DemoAiEngine::handle_ai_done(const beast::platform::engine::instance::InstanceEvent& event) {
-    platform::ai::AiChatDoneEvent done;
-    if (!done.ParseFromArray(
-            event.payload.data(),
-            static_cast<int>(event.payload.size()))) {
+void DemoAiEngine::on_engine_start(beast::platform::engine::context::EngineContext& ctx) {
+    const auto& players = ctx.player_ids();
+    if (players.empty()) {
+        BEAST_LOG_WARN("demo_ai on_engine_start: no players in instance");
         return;
     }
 
-    if (!done.ok()) {
-        send_error(ctx_, event, done.request_id(), done.error_message());
-        return;
-    }
+    std::uniform_int_distribution<int> pos_dist(0, TargetState::kMapSize - 1);
+    target_.x = pos_dist(rng_);
+    target_.y = pos_dist(rng_);
+    target_.hp = TargetState::kInitialHp;
+    ai_requests_sent_ = 0;
+    awaiting_receipt_ = false;
+    test_active_ = true;
 
-    if (event.player_id.empty()) {
-        return;
-    }
-
-    ReplyPush push;
-    push.set_request_id(done.request_id());
-    push.set_text(done.content());
-    ctx_->send(event.player_id, "demo.ai.reply", push);
+    BEAST_LOG_INFO(
+        "demo_ai hunt test start target=({},{}) hp={}",
+        target_.x,
+        target_.y,
+        target_.hp);
 }
 
-void DemoAiEngine::on_event(const beast::platform::engine::instance::InstanceEvent& event) {
-    if (event.route == "ask") {
-        handle_ask(event);
+void DemoAiEngine::on_engine_tick(
+    beast::platform::Tick tick,
+    beast::platform::TimestampMs /*dt_ms*/) {
+    if (!test_active_) {
         return;
     }
-    if (event.route == platform::ai::kRouteStreamChunk) {
-        handle_ai_stream_chunk(event);
-        return;
-    }
-    if (event.route == platform::ai::kRouteChatDone) {
-        handle_ai_done(event);
-    }
+
+    random_walk_target();
+    BEAST_LOG_INFO(
+        "demo_ai tick={} target moved to ({},{}) hp={}",
+        tick,
+        target_.x,
+        target_.y,
+        target_.hp);
+
+    try_submit_hunt_request();
 }
 
 std::unique_ptr<DemoAiEngine> make_demo_ai_engine() {

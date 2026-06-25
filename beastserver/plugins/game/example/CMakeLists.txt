@@ -2,3 +2,4 @@
 add_subdirectory(demo_event)
 add_subdirectory(demo_tick)
 add_subdirectory(demo_ai)
+add_subdirectory(demo_ai2)

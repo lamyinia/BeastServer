@@ -1,9 +1,11 @@
 # beast_add_plugin(<name>
 #   SOURCES <source files...>
-#   [PROTOS <proto files relative to plugin dir...>]
+#   [PROTO_DIR <bizconfig/protocol/game/...>]  # 与 plugins/game/ 下插件目录对齐
+#   [PROTOS <proto files relative to PROTO_DIR...>]
 # )
 #
-# 约定：每个玩法一个子目录 plugins/<name>/CMakeLists.txt，根 CMake 自动 add_subdirectory。
+# 约定：bizconfig/protocol/game/<pack>/<plugin>/<plugin>.proto
+#       ↔ plugins/game/<pack>/<plugin>/ ；生成物在 build/plugins/game/.../<plugin>/generated/
 function(beast_add_plugin PLUGIN_NAME)
     set(options "")
     set(one_value PROTO_DIR)

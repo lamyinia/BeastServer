@@ -11,7 +11,6 @@ deactivate_conan*.sh
 conandeps_legacy.cmake
 cmakedeps_macros.cmake
 CMakePresets.json
-CMakeUserPresets.json
 *Config.cmake
 *ConfigVersion.cmake
 *-config.cmake

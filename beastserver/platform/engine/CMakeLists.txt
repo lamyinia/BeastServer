@@ -4,6 +4,13 @@ find_package(Boost REQUIRED)
 add_library(beast_engine STATIC
     src/context/engine_context.cpp
     src/ai/instance_ai_facade.cpp
+    src/ai/ai_tool_registry.cpp
+    src/ai/ai_tool_dispatch.cpp
+    src/ai/ai_event_dispatch.cpp
+    src/ai/engine_ai_events.cpp
+    src/ai/engine_ai_declarative.cpp
+    src/ai/engine_ai_decisions.cpp
+    src/ai/engine_ai_host.cpp
     src/instance/instance.cpp
     src/carrier/event_carrier.cpp
     src/carrier/event_carrier_pool.cpp
