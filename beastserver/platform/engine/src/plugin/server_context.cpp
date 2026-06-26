@@ -1,5 +1,7 @@
 #include "beast/platform/plugin/server_context.hpp"
 
+#include "beast/platform/core/log/logger.hpp"
+#include "beast/platform/engine/dispatch/instance_dispatch_binding.hpp"
 #include "beast/platform/engine/dispatch/player_instance_registry.hpp"
 #include "beast/platform/engine/instance/instance_manager.hpp"
 #include "beast/platform/engine/plugin/plugin_host.hpp"
@@ -101,6 +103,20 @@ bool ServerContext::submit_instance_event(
     event.route = std::move(engine_route);
     event.payload = std::move(payload);
     event.client_seq = msg->client_seq;
+
+    if (void* handle = ch_ctx.instance_dispatch_handle()) {
+        auto* carrier = engine::dispatch::from_dispatch_handle(handle);
+        if (!carrier || !carrier->submit_event(event)) {
+            ch_ctx.send_error_response(msg, "submit failed");
+            return false;
+        }
+        return true;
+    }
+
+    BEAST_LOG_WARN(
+        "submit_instance_event: missing dispatch handle for instance {} player {}, falling back",
+        instance_id,
+        ch_ctx.player_id());
 
     if (!instance_manager_->submit_event(event)) {
         ch_ctx.send_error_response(msg, "submit failed");

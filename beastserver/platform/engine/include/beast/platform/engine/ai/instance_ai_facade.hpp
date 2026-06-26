@@ -6,6 +6,7 @@
 #include "beast/platform/core/types.hpp"
 #include "beast/platform/engine/ai/ai_delivery.hpp"
 #include "beast/platform/engine/ai/ai_tool.hpp"
+#include "beast/platform/engine/context/engine_context.hpp"
 #include "beast/platform/engine/instance/instance_event.hpp"
 
 #include "ai_event.pb.h"
@@ -34,6 +35,7 @@ struct AiCallContext {
     PlayerId player_id;
     platform::ai::AiRequestId request_id{0};
     std::uint64_t user_tag{0};
+    context::EngineContext::SubmitEventFn submit;
 };
 
 struct ToolInvokeBatch {
@@ -58,9 +60,7 @@ struct PendingCall {
 
 class InstanceAiFacade {
 public:
-    using SubmitEventFn = std::function<bool(const beast::platform::engine::instance::InstanceEvent&)>;
-
-    InstanceAiFacade(platform::ai::AiService* ai_service, SubmitEventFn submit_event);
+    explicit InstanceAiFacade(platform::ai::AiService* ai_service);
 
     [[nodiscard]] bool available() const noexcept;
 
@@ -126,7 +126,6 @@ private:
         const std::string& message);
 
     platform::ai::AiService* ai_service_{nullptr};
-    SubmitEventFn submit_event_;
     std::atomic<platform::ai::AiRequestId> next_request_id_{1};
     mutable std::mutex mutex_;
     mutable std::mutex stream_mutex_;

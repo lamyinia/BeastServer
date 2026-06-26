@@ -38,11 +38,27 @@ void DefaultChannelHandlerContext::set_instance_id(const std::string& instance_i
 }
 
 void DefaultChannelHandlerContext::clear_instance_id() {
-    pipeline_.clear_pipeline_instance_id();
+    pipeline_.clear_pipeline_instance_binding();
 }
 
 bool DefaultChannelHandlerContext::has_instance_id() const noexcept {
     return pipeline_.pipeline_has_instance_id();
+}
+
+void* DefaultChannelHandlerContext::instance_dispatch_handle() const noexcept {
+    return pipeline_.pipeline_instance_dispatch_handle();
+}
+
+void DefaultChannelHandlerContext::set_instance_dispatch_handle(void* handle) {
+    pipeline_.instance_dispatch_ = handle;
+}
+
+void DefaultChannelHandlerContext::clear_instance_dispatch_handle() {
+    pipeline_.instance_dispatch_ = nullptr;
+}
+
+bool DefaultChannelHandlerContext::has_instance_dispatch_handle() const noexcept {
+    return pipeline_.pipeline_has_instance_dispatch_handle();
 }
 
 void DefaultChannelHandlerContext::fire_channel_active() {
@@ -211,7 +227,7 @@ void ChannelPipeline::set_pipeline_instance_id(const std::string& instance_id) {
 }
 
 void ChannelPipeline::clear_pipeline_instance_id() {
-    instance_id_.clear();
+    clear_pipeline_instance_binding();
 }
 
 const std::string& ChannelPipeline::pipeline_instance_id() const noexcept {
@@ -220,6 +236,26 @@ const std::string& ChannelPipeline::pipeline_instance_id() const noexcept {
 
 bool ChannelPipeline::pipeline_has_instance_id() const noexcept {
     return !instance_id_.empty();
+}
+
+void ChannelPipeline::set_pipeline_instance_binding(
+    const std::string& instance_id,
+    void* dispatch_handle) {
+    instance_id_ = instance_id;
+    instance_dispatch_ = dispatch_handle;
+}
+
+void ChannelPipeline::clear_pipeline_instance_binding() {
+    instance_id_.clear();
+    instance_dispatch_ = nullptr;
+}
+
+void* ChannelPipeline::pipeline_instance_dispatch_handle() const noexcept {
+    return instance_dispatch_;
+}
+
+bool ChannelPipeline::pipeline_has_instance_dispatch_handle() const noexcept {
+    return instance_dispatch_ != nullptr;
 }
 
 void ChannelHandlerContext::send_error_response(

@@ -55,7 +55,10 @@ public:
         const std::shared_ptr<Session>& session) const;
     void remove_session(const core::PlayerId& player_id);
 
-    bool bind_instance(const core::PlayerId& player_id, const core::InstanceId& instance_id);
+    bool bind_instance(
+        const core::PlayerId& player_id,
+        const core::InstanceId& instance_id,
+        void* instance_dispatch_handle = nullptr);
     void unbind_instance(const core::PlayerId& player_id);
     void unbind_all_for_instance(const core::InstanceId& instance_id);
     [[nodiscard]] core::InstanceId instance_id_for(const core::PlayerId& player_id) const;

@@ -35,6 +35,12 @@ public:
     virtual void clear_instance_id() = 0;
     [[nodiscard]] virtual bool has_instance_id() const noexcept = 0;
 
+    // opaque dispatch 句柄（engine 层解释为 carrier*）；与 instance_id 同线程模型。
+    [[nodiscard]] virtual void* instance_dispatch_handle() const noexcept = 0;
+    virtual void set_instance_dispatch_handle(void* handle) = 0;
+    virtual void clear_instance_dispatch_handle() = 0;
+    [[nodiscard]] virtual bool has_instance_dispatch_handle() const noexcept = 0;
+
     virtual void fire_channel_active() = 0;
     virtual void fire_channel_read(InboundMessage&& msg) = 0;
     virtual void fire_channel_inactive() = 0;

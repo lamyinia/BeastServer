@@ -20,9 +20,8 @@ void apply_chat_defaults(platform::ai::ChatRequest& req, const platform::ai::AiS
 
 } // namespace
 
-InstanceAiFacade::InstanceAiFacade(platform::ai::AiService* ai_service, SubmitEventFn submit_event)
-    : ai_service_(ai_service)
-    , submit_event_(std::move(submit_event)) {}
+InstanceAiFacade::InstanceAiFacade(platform::ai::AiService* ai_service)
+    : ai_service_(ai_service) {}
 
 bool InstanceAiFacade::available() const noexcept {
     return ai_service_ != nullptr && ai_service_->enabled();
@@ -46,6 +45,7 @@ AiCallContext InstanceAiFacade::make_call(
     }
     call.request_id = next_request_id_.fetch_add(1, std::memory_order_relaxed);
     call.user_tag = user_tag;
+    call.submit = ctx.submit_event_fn();
     return call;
 }
 
@@ -71,7 +71,7 @@ std::optional<PendingCall> InstanceAiFacade::take_pending(const platform::ai::Ai
 }
 
 void InstanceAiFacade::post_chat_done(const AiCallContext& call, platform::ai::ChatResponse&& resp) {
-    if (!submit_event_) {
+    if (!call.submit) {
         return;
     }
 
@@ -89,7 +89,7 @@ void InstanceAiFacade::post_chat_done(const AiCallContext& call, platform::ai::C
     const auto bytes = event.SerializeAsString();
     instance_event.payload.assign(bytes.begin(), bytes.end());
 
-    if (!submit_event_(instance_event)) {
+    if (!call.submit(instance_event)) {
         BEAST_LOG_WARN(
             "InstanceAiFacade submit chat.done failed instance={} request={}",
             call.instance_id,
@@ -101,7 +101,7 @@ void InstanceAiFacade::post_stream_chunk(
     const AiCallContext& call,
     std::string delta,
     const bool final_chunk) {
-    if (!submit_event_) {
+    if (!call.submit) {
         return;
     }
 
@@ -119,7 +119,7 @@ void InstanceAiFacade::post_stream_chunk(
     const auto bytes = event.SerializeAsString();
     instance_event.payload.assign(bytes.begin(), bytes.end());
 
-    if (!submit_event_(instance_event)) {
+    if (!call.submit(instance_event)) {
         BEAST_LOG_WARN(
             "InstanceAiFacade submit stream.chunk failed instance={} request={}",
             call.instance_id,
@@ -128,7 +128,7 @@ void InstanceAiFacade::post_stream_chunk(
 }
 
 void InstanceAiFacade::post_error(const AiCallContext& call, const std::error_code ec) {
-    if (!submit_event_) {
+    if (!call.submit) {
         return;
     }
 
@@ -147,7 +147,7 @@ void InstanceAiFacade::post_error(const AiCallContext& call, const std::error_co
     const auto bytes = event.SerializeAsString();
     instance_event.payload.assign(bytes.begin(), bytes.end());
 
-    if (!submit_event_(instance_event)) {
+    if (!call.submit(instance_event)) {
         BEAST_LOG_WARN(
             "InstanceAiFacade submit chat.error failed instance={} request={}",
             call.instance_id,
@@ -157,19 +157,19 @@ void InstanceAiFacade::post_error(const AiCallContext& call, const std::error_co
 
 void InstanceAiFacade::post_tool_invoke(
     const PendingCall& pending,
-    const platform::ai::ToolCall& call,
+    const platform::ai::ToolCall& tool_call,
     const std::uint32_t invoke_index,
     const std::uint32_t invoke_total) {
-    if (!submit_event_) {
+    if (!pending.call.submit) {
         return;
     }
 
     beast::platform::ai::AiToolInvokeEvent event;
     event.set_request_id(pending.call.request_id);
     event.set_user_tag(pending.call.user_tag);
-    event.set_tool_call_id(call.id);
-    event.set_name(call.name);
-    event.set_arguments_json(call.arguments_json);
+    event.set_tool_call_id(tool_call.id);
+    event.set_name(tool_call.name);
+    event.set_arguments_json(tool_call.arguments_json);
     event.set_invoke_index(invoke_index);
     event.set_invoke_total(invoke_total);
 
@@ -181,19 +181,19 @@ void InstanceAiFacade::post_tool_invoke(
     const auto bytes = event.SerializeAsString();
     instance_event.payload.assign(bytes.begin(), bytes.end());
 
-    if (!submit_event_(instance_event)) {
+    if (!pending.call.submit(instance_event)) {
         BEAST_LOG_WARN(
             "InstanceAiFacade submit tool.invoke failed instance={} request={} tool={}",
             pending.call.instance_id,
             pending.call.request_id,
-            call.name);
+            tool_call.name);
     }
 }
 
 void InstanceAiFacade::post_tool_loop_done(
     const PendingCall& pending,
     platform::ai::ChatResponse&& resp) {
-    if (!submit_event_) {
+    if (!pending.call.submit) {
         return;
     }
 
@@ -214,7 +214,7 @@ void InstanceAiFacade::post_tool_loop_done(
     const auto bytes = event.SerializeAsString();
     instance_event.payload.assign(bytes.begin(), bytes.end());
 
-    if (!submit_event_(instance_event)) {
+    if (!pending.call.submit(instance_event)) {
         BEAST_LOG_WARN(
             "InstanceAiFacade submit tool_loop.done failed instance={} request={}",
             pending.call.instance_id,
@@ -226,7 +226,7 @@ void InstanceAiFacade::post_tool_loop_failed(
     const PendingCall& pending,
     const platform::ai::AiToolLoopFailReason reason,
     const std::string& message) {
-    if (!submit_event_) {
+    if (!pending.call.submit) {
         return;
     }
 
@@ -244,7 +244,7 @@ void InstanceAiFacade::post_tool_loop_failed(
     const auto bytes = event.SerializeAsString();
     instance_event.payload.assign(bytes.begin(), bytes.end());
 
-    if (!submit_event_(instance_event)) {
+    if (!pending.call.submit(instance_event)) {
         BEAST_LOG_WARN(
             "InstanceAiFacade submit tool_loop.failed failed instance={} request={}",
             pending.call.instance_id,

@@ -54,6 +54,8 @@ public:
         EngineFactory engine_factory,
         std::uint32_t tick_hz = 0);
 
+    [[nodiscard]] carrier::ICarrier* carrier_for_instance(const InstanceId& instance_id) const;
+
     bool destroy_instance(const InstanceId& instance_id);
     bool submit_event(const InstanceEvent& event);
 

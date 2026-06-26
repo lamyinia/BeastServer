@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package beast.demo;
+
+// 客户端 → 服务端：ping1（wire: demo.event.ping1 → engine route: ping1）
+message PingRequest1 {
+  string text = 1;
+}
+
+message PingPush1 {
+  string text = 1;
+}
+
+message PingRequest2 {
+  string text = 1;
+}
+
+message PingPush2 {
+  string text = 1;
+}
+
+message PingRequest3 {
+  string text = 1;
+}
+
+message PingPush3 {
+  string text = 1;
+}
+
+message PingRequest4 {
+  string text = 1;
+}
+
+message PingPush4 {
+  string text = 1;
+}
+
+message PingRequest5 {
+  string text = 1;
+}
+
+message PingPush5 {
+  string text = 1;
+}

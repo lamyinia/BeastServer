@@ -29,7 +29,7 @@ namespace beast::platform::engine::context {
 
 class EngineContext {
 public:
-    using SubmitEventFn = std::function<void(instance::InstanceEvent)>;
+    using SubmitEventFn = std::function<bool(instance::InstanceEvent)>;
     using NotifyEndFn = std::function<void()>;
 
     EngineContext(
@@ -38,6 +38,7 @@ public:
         net::outbound::OutboundHub* outbound_hub);
 
     void set_submit_event_fn(SubmitEventFn fn) { submit_event_fn_ = std::move(fn); }
+    [[nodiscard]] SubmitEventFn submit_event_fn() const { return submit_event_fn_; }
     void set_notify_end_fn(NotifyEndFn fn) { notify_end_fn_ = std::move(fn); }
     void set_timer_service(timer::TimerService* timer_service) { timer_service_ = timer_service; }
     void set_biz_config_store(const bizutil::config::BizConfigStore* store) noexcept {
@@ -80,6 +81,7 @@ public:
         net::outbound::ProtocolPreference preference = net::outbound::ProtocolPreference::PreferTcp);
 
     void submit_event(instance::InstanceEvent event);
+    [[nodiscard]] bool deliver_event(instance::InstanceEvent event) const;
     void notify_instance_end();
 
     [[nodiscard]] timer::TimerHandle schedule_timer(

@@ -14,7 +14,10 @@
 namespace beast::platform::net::session {
 namespace {
 
-void sync_instance_id_on_strand(const std::shared_ptr<Session>& session, const core::InstanceId& instance_id) {
+void sync_instance_binding_on_strand(
+    const std::shared_ptr<Session>& session,
+    const core::InstanceId& instance_id,
+    void* instance_dispatch_handle) {
     if (!session) {
         return;
     }
@@ -25,9 +28,9 @@ void sync_instance_id_on_strand(const std::shared_ptr<Session>& session, const c
             continue;
         }
         if (instance_id.empty()) {
-            channel->pipeline().clear_pipeline_instance_id();
+            channel->pipeline().clear_pipeline_instance_binding();
         } else {
-            channel->pipeline().set_pipeline_instance_id(instance_id);
+            channel->pipeline().set_pipeline_instance_binding(instance_id, instance_dispatch_handle);
         }
     }
 }
@@ -317,7 +320,8 @@ void SessionManager::remove_session(const core::PlayerId& player_id) {
 
 bool SessionManager::bind_instance(
     const core::PlayerId& player_id,
-    const core::InstanceId& instance_id) {
+    const core::InstanceId& instance_id,
+    void* instance_dispatch_handle) {
     if (player_id.empty() || instance_id.empty()) {
         return false;
     }
@@ -328,9 +332,9 @@ bool SessionManager::bind_instance(
         return false;
     }
 
-    session->dispatch([session, instance_id]() {
+    session->dispatch([session, instance_id, instance_dispatch_handle]() {
         session->set_instance_id(instance_id);
-        sync_instance_id_on_strand(session, instance_id);
+        sync_instance_binding_on_strand(session, instance_id, instance_dispatch_handle);
     });
     BEAST_LOG_DEBUG("player {} bound to instance {}", player_id, instance_id);
     return true;
@@ -344,7 +348,7 @@ void SessionManager::unbind_instance(const core::PlayerId& player_id) {
 
     session->dispatch([session]() {
         session->clear_instance_id();
-        sync_instance_id_on_strand(session, {});
+        sync_instance_binding_on_strand(session, {}, nullptr);
     });
 }
 
@@ -364,7 +368,7 @@ void SessionManager::unbind_all_for_instance(const core::InstanceId& instance_id
     for (const auto& session : affected) {
         session->dispatch([session]() {
             session->clear_instance_id();
-            sync_instance_id_on_strand(session, {});
+            sync_instance_binding_on_strand(session, {}, nullptr);
         });
     }
 }

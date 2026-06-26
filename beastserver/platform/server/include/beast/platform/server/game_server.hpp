@@ -24,7 +24,7 @@ struct GameServerOptions {
     std::string config_file_path;
 };
 
-// 组装并启动：TcpServer + GrpcServer + InstanceManager + TimerService + PluginHost + InstanceEventBridge。
+// 组装并启动：TcpServer + GrpcServer + InstanceManager + TimerService + PluginHost。
 class GameServer {
 public:
     GameServer(core::config::ServerConfig config, GameServerOptions options = {});

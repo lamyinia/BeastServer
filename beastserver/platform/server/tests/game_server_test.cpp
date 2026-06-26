@@ -114,7 +114,7 @@ TEST(GameServerTest, LoadsBuiltInSharedPluginsWhenConfigured) {
     game_server.start();
 
     EXPECT_GE(game_server.plugin_host().engine_count(), 2u);
-    EXPECT_TRUE(game_server.tcp_server().router().has_route("demo.event.ping"));
+    EXPECT_TRUE(game_server.tcp_server().router().has_route("demo.event.ping1"));
 
     game_server.stop();
 }

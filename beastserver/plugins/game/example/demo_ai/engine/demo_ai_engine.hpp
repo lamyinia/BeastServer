@@ -58,6 +58,14 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     attack_square_size,
     requests_remaining)
 
+// LLM 回包 JSON 仅含此结构；上下文字段由平台 attach_receipt_context 填入 HuntReceiptResult。
+struct HuntLlmOutput {
+    int attack_x{};
+    int attack_y{};
+};
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(HuntLlmOutput, attack_x, attack_y)
+
 struct HuntReceiptResult {
     static constexpr const char* kEngineRoute = "hunt.done";
 
@@ -70,7 +78,7 @@ struct HuntReceiptResult {
     std::string error_message;
 
     [[nodiscard]] static nlohmann::json required_output() {
-        return {{"attack_x", 0}, {"attack_y", 0}};
+        return nlohmann::json(HuntLlmOutput{});
     }
 
     [[nodiscard]] static std::vector<std::string> output_rules() {
@@ -80,23 +88,24 @@ struct HuntReceiptResult {
     [[nodiscard]] static beast::platform::engine::ai::JsonParseResult<HuntReceiptResult> parse_json(
         const HuntEvent::Request& request,
         const nlohmann::json& object) {
-        using beast::platform::engine::ai::JsonObjectReader;
         using Result = beast::platform::engine::ai::JsonParseResult<HuntReceiptResult>;
 
-        JsonObjectReader reader(object);
-        HuntReceiptResult result;
-        result.attack_x = reader.required_int("attack_x");
-        result.attack_y = reader.required_int("attack_y");
-        if (!reader.ok()) {
-            return Result::failure(reader.error_message());
+        HuntLlmOutput llm_output;
+        try {
+            llm_output = object.get<HuntLlmOutput>();
+        } catch (const std::exception& e) {
+            return Result::failure(e.what());
         }
 
         const int max_origin = request.map_size - request.attack_square_size;
-        if (result.attack_x < 0 || result.attack_y < 0 || result.attack_x > max_origin
-            || result.attack_y > max_origin) {
+        if (llm_output.attack_x < 0 || llm_output.attack_y < 0 || llm_output.attack_x > max_origin
+            || llm_output.attack_y > max_origin) {
             return Result::failure("attack_x/attack_y must place attack square inside the map");
         }
 
+        HuntReceiptResult result;
+        result.attack_x = llm_output.attack_x;
+        result.attack_y = llm_output.attack_y;
         return Result::success(std::move(result));
     }
 
@@ -118,9 +127,7 @@ struct HuntReceiptResult {
 };
 
 class DemoAiEngine final
-    : public beast::platform::engine::capability::EngineRoot<
-          DemoAiEngine,
-          beast::platform::engine::ai::AiCapabilityMixin> {
+    : public beast::platform::engine::capability::EngineRoot<DemoAiEngine, beast::platform::engine::ai::AiCapabilityMixin> {
 public:
     static constexpr int kMaxAiRequests = 10;
 

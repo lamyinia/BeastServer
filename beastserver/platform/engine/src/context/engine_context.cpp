@@ -71,13 +71,17 @@ void EngineContext::broadcast(
 }
 
 void EngineContext::submit_event(instance::InstanceEvent event) {
+    (void)deliver_event(std::move(event));
+}
+
+bool EngineContext::deliver_event(instance::InstanceEvent event) const {
     if (!submit_event_fn_) {
-        return;
+        return false;
     }
     if (event.instance_id.empty()) {
         event.instance_id = instance_id_;
     }
-    submit_event_fn_(std::move(event));
+    return submit_event_fn_(std::move(event));
 }
 
 void EngineContext::notify_instance_end() {

@@ -85,13 +85,13 @@ TEST(RouteHandlerTest, ParsePayloadAcceptsValidProtobuf) {
     channel->pipeline().fire_channel_active();
     ASSERT_NE(g_ctx, nullptr);
 
-    beast::demo::PingRequest request;
+    beast::demo::PingRequest1 request;
     request.set_text("hello");
 
-    const auto msg = make_message("demo.event.ping", request);
+    const auto msg = make_message("demo.event.ping1", request);
 
-    beast::demo::PingRequest parsed;
-    EXPECT_TRUE(plugin::parse_payload(parsed, *g_ctx, msg, "ping"));
+    beast::demo::PingRequest1 parsed;
+    EXPECT_TRUE(plugin::parse_payload(parsed, *g_ctx, msg, "ping1"));
     EXPECT_EQ(parsed.text(), "hello");
 }
 
@@ -102,9 +102,9 @@ TEST(RouteHandlerTest, ParsePayloadRejectsInvalidBytes) {
     ASSERT_NE(g_ctx, nullptr);
 
     auto msg = std::make_shared<Message>();
-    msg->route = "demo.event.ping";
+    msg->route = "demo.event.ping1";
     msg->payload = {0x01, 0x02, 0x03};
 
-    beast::demo::PingRequest parsed;
-    EXPECT_FALSE(plugin::parse_payload(parsed, *g_ctx, msg, "ping"));
+    beast::demo::PingRequest1 parsed;
+    EXPECT_FALSE(plugin::parse_payload(parsed, *g_ctx, msg, "ping1"));
 }

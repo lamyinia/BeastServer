@@ -5,7 +5,7 @@
 #include "beast/platform/bizutil/config/paths.hpp"
 #include "beast/platform/core/log/logger.hpp"
 #include "beast/platform/engine/ai/instance_ai_facade.hpp"
-#include "beast/platform/net/channel/channel_pipeline.hpp"
+#include "beast/platform/engine/dispatch/instance_session_binding.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -125,17 +125,17 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
           &tcp_server_.router(),
           &tcp_server_.session_manager(),
           &player_registry_)
-    , room_service_(&plugin_host_, &player_registry_) {
+    , room_service_(
+          &plugin_host_,
+          &player_registry_,
+          &tcp_server_.session_manager(),
+          &instance_manager_) {
     instance_manager_.set_timer_service(&timer_service_);
 
     if (config_.ai.enabled) {
         const auto ai_config = ai::AiConfig::from_settings(config_.ai);
         ai_service_ = std::make_unique<ai::AiService>(ai_config);
-        ai_facade_ = std::make_unique<engine::ai::InstanceAiFacade>(
-            ai_service_.get(),
-            [this](const engine::instance::InstanceEvent& event) {
-                return instance_manager_.submit_event(event);
-            });
+        ai_facade_ = std::make_unique<engine::ai::InstanceAiFacade>(ai_service_.get());
         instance_manager_.set_instance_ai_facade(ai_facade_.get());
         BEAST_LOG_INFO(
             "AI service enabled provider={} model={}",
@@ -146,12 +146,13 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
     }
 
     tcp_server_.set_on_authenticated([this](const PlayerId& player_id, const std::shared_ptr<net::channel::IChannel>& channel) {
-        // gRPC 已写入 Registry；auth 时同步 Session，并在当前连接 strand 上立即写入 pipeline 缓存。
         if (const auto instance_id = player_registry_.lookup(player_id)) {
-            tcp_server_.session_manager().bind_instance(player_id, *instance_id);
-            if (channel) {
-                channel->pipeline().set_pipeline_instance_id(*instance_id);
-            }
+            (void)engine::dispatch::bind_player_to_instance(
+                tcp_server_.session_manager(),
+                instance_manager_,
+                player_id,
+                *instance_id,
+                channel);
         }
     });
 

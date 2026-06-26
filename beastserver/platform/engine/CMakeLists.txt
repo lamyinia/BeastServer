@@ -19,6 +19,7 @@ add_library(beast_engine STATIC
     src/instance/instance_manager.cpp
     src/dispatch/player_instance_registry.cpp
     src/dispatch/instance_event_bridge.cpp
+    src/dispatch/instance_session_binding.cpp
     src/timer/timer_wheel.cpp
     src/timer/timer_service.cpp
     src/plugin/server_context.cpp
@@ -68,10 +69,6 @@ add_executable(beast_engine_instance_manager_test tests/instance_manager_test.cp
 target_link_libraries(beast_engine_instance_manager_test PRIVATE beast_engine GTest::gtest_main)
 add_test(NAME beast_engine_instance_manager_test COMMAND beast_engine_instance_manager_test)
 
-add_executable(beast_engine_instance_event_bridge_test tests/instance_event_bridge_test.cpp)
-target_link_libraries(beast_engine_instance_event_bridge_test PRIVATE beast_engine GTest::gtest_main)
-add_test(NAME beast_engine_instance_event_bridge_test COMMAND beast_engine_instance_event_bridge_test)
-
 add_executable(beast_engine_player_instance_registry_test tests/player_instance_registry_test.cpp)
 target_link_libraries(beast_engine_player_instance_registry_test PRIVATE beast_engine GTest::gtest_main)
 add_test(NAME beast_engine_player_instance_registry_test COMMAND beast_engine_player_instance_registry_test)
@@ -79,6 +76,12 @@ add_test(NAME beast_engine_player_instance_registry_test COMMAND beast_engine_pl
 add_executable(beast_engine_server_context_test tests/server_context_test.cpp)
 target_link_libraries(beast_engine_server_context_test PRIVATE beast_engine GTest::gtest_main)
 add_test(NAME beast_engine_server_context_test COMMAND beast_engine_server_context_test)
+
+add_executable(beast_engine_instance_dispatch_integration_test
+    tests/instance_dispatch_integration_test.cpp)
+target_link_libraries(beast_engine_instance_dispatch_integration_test PRIVATE beast_engine GTest::gtest_main)
+add_test(NAME beast_engine_instance_dispatch_integration_test
+    COMMAND beast_engine_instance_dispatch_integration_test)
 
 add_executable(beast_engine_timer_wheel_test tests/timer_wheel_test.cpp)
 target_link_libraries(beast_engine_timer_wheel_test PRIVATE beast_engine GTest::gtest_main)

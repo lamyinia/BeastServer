@@ -127,9 +127,7 @@ void LoopCarrier::worker_loop() {
         {
             std::unique_lock lock(queue_mutex_);
             queue_cv_.wait_until(lock, deadline, [this]() {
-                return !running_
-                    || !queue_.empty()
-                    || event_ingress_.pending() > 0;
+                return !running_|| !queue_.empty() || event_ingress_.pending() > 0;
             });
             if (!running_ && queue_.empty() && event_ingress_.pending() == 0) {
                 break;

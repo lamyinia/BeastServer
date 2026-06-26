@@ -50,8 +50,9 @@ void DemoAiEngine::try_submit_hunt_request() {
         .requests_remaining = kMaxAiRequests - ai_requests_sent_,
     };
 
-    const beast::platform::ai::AiRequestId request_id =
+    const beast::platform::ai::AiRequestId request_id = 
         beast::platform::engine::ai::request_receipt<HuntEvent>(ai_host(), request);
+        
     if (request_id == 0) {
         BEAST_LOG_WARN("demo_ai hunt request_receipt failed pos=({},{})", target_.x, target_.y);
         return;

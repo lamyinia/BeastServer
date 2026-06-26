@@ -32,6 +32,11 @@ public:
     void clear_instance_id() override;
     [[nodiscard]] bool has_instance_id() const noexcept override;
 
+    [[nodiscard]] void* instance_dispatch_handle() const noexcept override;
+    void set_instance_dispatch_handle(void* handle) override;
+    void clear_instance_dispatch_handle() override;
+    [[nodiscard]] bool has_instance_dispatch_handle() const noexcept override;
+
     void fire_channel_active() override;
     void fire_channel_read(InboundMessage&& msg) override;
     void fire_channel_inactive() override;
@@ -85,12 +90,18 @@ public:
     [[nodiscard]] const std::string& pipeline_instance_id() const noexcept;
     [[nodiscard]] bool pipeline_has_instance_id() const noexcept;
 
+    void set_pipeline_instance_binding(const std::string& instance_id, void* dispatch_handle);
+    void clear_pipeline_instance_binding();
+    [[nodiscard]] void* pipeline_instance_dispatch_handle() const noexcept;
+    [[nodiscard]] bool pipeline_has_instance_dispatch_handle() const noexcept;
+
 private:
     IChannel& channel_;
     std::vector<std::shared_ptr<DefaultChannelHandlerContext>> contexts_;
     bool authorized_{false};
     std::string player_id_;
     std::string instance_id_;
+    void* instance_dispatch_{nullptr};
 
     friend class DefaultChannelHandlerContext;
 };

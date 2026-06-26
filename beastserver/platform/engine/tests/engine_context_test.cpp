@@ -161,6 +161,7 @@ TEST(EngineContextTest, SubmitEventFillsInstanceIdAndInvokesCallback) {
     ctx.set_submit_event_fn([&](engine::instance::InstanceEvent event) {
         callback_count.fetch_add(1, std::memory_order_relaxed);
         received = std::move(event);
+        return true;
     });
 
     engine::instance::InstanceEvent event;

@@ -1,3 +1,5 @@
+include(${CMAKE_SOURCE_DIR}/cmake/BeastTargets.cmake)
+
 add_subdirectory(core)
 add_subdirectory(bizutil)
 add_subdirectory(ai)

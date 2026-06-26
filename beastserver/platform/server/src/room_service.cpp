@@ -2,6 +2,7 @@
 
 #include "beast/platform/core/id_generator.hpp"
 #include "beast/platform/core/log/logger.hpp"
+#include "beast/platform/engine/dispatch/instance_session_binding.hpp"
 #include "beast/platform/engine/dispatch/player_instance_registry.hpp"
 
 #include <unordered_set>
@@ -27,9 +28,13 @@ namespace {
 
 RoomService::RoomService(
     engine::plugin::PluginHost* plugin_host,
-    engine::dispatch::PlayerInstanceRegistry* player_registry)
+    engine::dispatch::PlayerInstanceRegistry* player_registry,
+    net::session::SessionManager* session_manager,
+    engine::instance::InstanceManager* instance_manager)
     : plugin_host_(plugin_host)
-    , player_registry_(player_registry) {}
+    , player_registry_(player_registry)
+    , session_manager_(session_manager)
+    , instance_manager_(instance_manager) {}
 
 InstanceId RoomService::generate_instance_id(const EngineName& engine_name) const {
     const auto id = core::IdGenerator::instance().next_id();
@@ -79,7 +84,13 @@ CreateRoomOutcome RoomService::create_room(CreateRoomParams params) {
     }
 
     outcome.ok = true;
-    outcome.instance_id = std::move(instance_id);
+    outcome.instance_id = instance_id;
+
+    if (session_manager_ && instance_manager_ && !players.empty()) {
+        (void)engine::dispatch::bind_players_to_instance(
+            *session_manager_, *instance_manager_, players, instance_id);
+    }
+
     return outcome;
 }
 

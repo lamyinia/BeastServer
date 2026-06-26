@@ -2,6 +2,8 @@
 
 #include "beast/platform/core/types.hpp"
 #include "beast/platform/engine/dispatch/player_instance_registry.hpp"
+#include "beast/platform/engine/instance/instance_manager.hpp"
+#include "beast/platform/net/session/session_manager.hpp"
 #include "beast/platform/engine/plugin/plugin_host.hpp"
 
 #include <string>
@@ -28,7 +30,9 @@ class RoomService {
 public:
     RoomService(
         engine::plugin::PluginHost* plugin_host,
-        engine::dispatch::PlayerInstanceRegistry* player_registry);
+        engine::dispatch::PlayerInstanceRegistry* player_registry,
+        net::session::SessionManager* session_manager = nullptr,
+        engine::instance::InstanceManager* instance_manager = nullptr);
 
     [[nodiscard]] CreateRoomOutcome create_room(CreateRoomParams params);
 
@@ -37,6 +41,8 @@ private:
 
     engine::plugin::PluginHost* plugin_host_{nullptr};
     engine::dispatch::PlayerInstanceRegistry* player_registry_{nullptr};
+    net::session::SessionManager* session_manager_{nullptr};
+    engine::instance::InstanceManager* instance_manager_{nullptr};
 };
 
 } // namespace beast::platform::server

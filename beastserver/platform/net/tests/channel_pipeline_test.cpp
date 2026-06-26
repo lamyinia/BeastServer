@@ -112,10 +112,14 @@ public:
     void channel_active(ChannelHandlerContext& ctx) override {
         instance_id_ = ctx.instance_id();
         has_instance_id_ = ctx.has_instance_id();
+        dispatch_handle_ = ctx.instance_dispatch_handle();
+        has_dispatch_handle_ = ctx.has_instance_dispatch_handle();
     }
 
     std::string instance_id_;
     bool has_instance_id_{false};
+    void* dispatch_handle_{nullptr};
+    bool has_dispatch_handle_{false};
 };
 
 } // namespace
@@ -174,4 +178,34 @@ TEST(ChannelPipelineTest, InstanceIdSharedAcrossHandlers) {
 
     EXPECT_TRUE(checker->has_instance_id_);
     EXPECT_EQ(checker->instance_id_, "room-42");
+}
+
+TEST(ChannelPipelineTest, InstanceBindingClearsIdAndDispatchTogether) {
+    auto channel = std::make_shared<FakeChannel>();
+    void* handle = reinterpret_cast<void*>(0xABCD);
+
+    channel->pipeline().set_pipeline_instance_binding("room-99", handle);
+    EXPECT_TRUE(channel->pipeline().pipeline_has_instance_id());
+    EXPECT_TRUE(channel->pipeline().pipeline_has_instance_dispatch_handle());
+    EXPECT_EQ(channel->pipeline().pipeline_instance_dispatch_handle(), handle);
+
+    channel->pipeline().clear_pipeline_instance_binding();
+    EXPECT_FALSE(channel->pipeline().pipeline_has_instance_id());
+    EXPECT_FALSE(channel->pipeline().pipeline_has_instance_dispatch_handle());
+}
+
+TEST(ChannelPipelineTest, InstanceBindingSharedAcrossHandlers) {
+    auto channel = std::make_shared<FakeChannel>();
+    auto checker = std::make_shared<InstanceCheckerHandler>();
+    channel->add_inbound(std::make_shared<AuthSetterHandler>());
+    channel->add_inbound(checker);
+
+    void* handle = reinterpret_cast<void*>(0x1234);
+    channel->pipeline().set_pipeline_instance_binding("room-42", handle);
+    channel->pipeline().fire_channel_active();
+
+    EXPECT_TRUE(checker->has_instance_id_);
+    EXPECT_EQ(checker->instance_id_, "room-42");
+    EXPECT_TRUE(checker->has_dispatch_handle_);
+    EXPECT_EQ(checker->dispatch_handle_, handle);
 }

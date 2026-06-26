@@ -70,7 +70,7 @@ bool InstanceManager::create_instance(
     }
 
     context::EngineContext ctx(instance_id, player_ids, outbound_hub_);
-    ctx.set_submit_event_fn([this](InstanceEvent event) { submit_event(std::move(event)); });
+    ctx.set_submit_event_fn([carrier](InstanceEvent event) { return carrier->submit_event(event); });
     ctx.set_notify_end_fn([this, instance_id]() { on_instance_ended(instance_id); });
     ctx.set_timer_service(timer_service_);
     ctx.set_biz_config_store(biz_config_store_);
@@ -146,6 +146,10 @@ core::SimulationMode InstanceManager::mode_of(const InstanceId& instance_id) con
         return core::SimulationMode::EventDriven;
     }
     return it->second.mode;
+}
+
+carrier::ICarrier* InstanceManager::carrier_for_instance(const InstanceId& instance_id) const {
+    return carrier_for(instance_id);
 }
 
 carrier::ICarrier* InstanceManager::carrier_for(const InstanceId& instance_id) const {

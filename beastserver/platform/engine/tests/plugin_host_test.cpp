@@ -155,7 +155,7 @@ TEST(PluginHostTest, LoadsSharedPluginsFromBuildDirectory) {
     ASSERT_TRUE(host.create_instance("demo_tick", "shared-tick-room", {}));
 
     host.wire_routes();
-    EXPECT_TRUE(router.has_route("demo.event.ping"));
+    EXPECT_TRUE(router.has_route("demo.event.ping1"));
     EXPECT_TRUE(router.has_route("demo.tick.action"));
 
     manager.stop();
