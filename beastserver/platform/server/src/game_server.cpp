@@ -110,7 +110,7 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
     , options_(std::move(options))
     , resolved_plugins_(resolve_plugins_config(config_, options_))
     , resolved_biz_paths_(resolve_biz_paths(config_, options_))
-    , tcp_server_(config_.net.tcp)
+    , tcp_server_(config_.net.tcp, config_.auth)
     , grpc_server_(config_.grpc.port)
     , instance_manager_(config_.runtime, &tcp_server_.outbound_hub())
     , timer_service_(config_.runtime.timer_wheel, &instance_manager_)

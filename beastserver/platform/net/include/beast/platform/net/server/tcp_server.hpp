@@ -14,7 +14,9 @@ namespace beast::platform::net::server {
 
 class TcpServer {
 public:
-    explicit TcpServer(core::config::TcpConfig config = {});
+    TcpServer(
+        core::config::TcpConfig tcp_config = {},
+        core::config::AuthConfig auth_config = {});
 
     [[nodiscard]] boost::asio::io_context& io_context() noexcept { return io_runner_.context(); }
     [[nodiscard]] session::SessionManager& session_manager() noexcept { return *session_manager_; }
@@ -29,6 +31,7 @@ public:
 
 private:
     core::config::TcpConfig config_;
+    core::config::AuthConfig auth_config_;
     io::IoContextRunner io_runner_;
     std::shared_ptr<dispatch::Router> router_;
     std::shared_ptr<session::SessionManager> session_manager_;

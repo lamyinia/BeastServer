@@ -3,6 +3,7 @@
 #include "beast/platform/core/log/logger.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -103,6 +104,28 @@ struct DebugConfig {
     bool enabled{false};
 };
 
+struct DevAuthConfig {
+    std::string token_prefix{"dev:"};
+};
+
+struct JwtAuthConfig {
+    std::string issuer{"beast-lobby"};
+    std::string audience{"beast-game"};
+    std::string hmac_secret;
+    std::string hmac_secret_env{"BEAST_AUTH_JWT_SECRET"};
+};
+
+struct AuthConfig {
+    bool explicit_config{false};
+    std::string mode{"dev"};
+    std::uint32_t auth_timeout_seconds{5};
+    DevAuthConfig dev;
+    JwtAuthConfig jwt;
+
+    [[nodiscard]] bool is_dev_mode() const noexcept { return mode == "dev"; }
+    [[nodiscard]] bool is_jwt_mode() const noexcept { return mode == "jwt"; }
+};
+
 // 插件加载策略：默认扫描 plugins/ 目录，不在 server.json 里逐个登记玩法。
 struct PluginsConfig {
     std::string dir{"plugins"};
@@ -172,11 +195,15 @@ struct ServerConfig {
     MongoConfig mongodb;
     RuntimeConfig runtime;
     DebugConfig debug;
+    AuthConfig auth;
     PluginsConfig plugins;
     BizConfigSettings bizconfig;
     AiConfigSettings ai;
 };
 
 void finalize_server_config(ServerConfig& config);
+
+// 校验配置组合是否合法（如生产环境禁止 dev 鉴权）。
+[[nodiscard]] std::optional<std::string> validate_server_config(const ServerConfig& config);
 
 } // namespace beast::platform::core::config

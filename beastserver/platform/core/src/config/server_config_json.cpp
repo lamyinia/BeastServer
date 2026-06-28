@@ -1,5 +1,6 @@
 #include "beast/platform/core/config/config_registry.hpp"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 
@@ -222,6 +223,34 @@ void parse_ai(const nlohmann::json& root, AiConfigSettings& out) {
     }
 }
 
+void parse_auth(const nlohmann::json& server, AuthConfig& out) {
+    if (!server.contains("auth")) {
+        return;
+    }
+
+    out.explicit_config = true;
+
+    const auto& auth = server.at("auth");
+    if (!auth.is_object()) {
+        throw std::invalid_argument("auth must be an object");
+    }
+
+    assign_if_present(auth, "mode", out.mode);
+    assign_if_present(auth, "auth_timeout_seconds", out.auth_timeout_seconds);
+
+    if (auth.contains("dev") && auth.at("dev").is_object()) {
+        assign_if_present(auth.at("dev"), "token_prefix", out.dev.token_prefix);
+    }
+
+    if (auth.contains("jwt") && auth.at("jwt").is_object()) {
+        const auto& jwt = auth.at("jwt");
+        assign_if_present(jwt, "issuer", out.jwt.issuer);
+        assign_if_present(jwt, "audience", out.jwt.audience);
+        assign_if_present(jwt, "hmac_secret", out.jwt.hmac_secret);
+        assign_if_present(jwt, "hmac_secret_env", out.jwt.hmac_secret_env);
+    }
+}
+
 ServerConfig parse_server_node(const nlohmann::json& server) {
     ServerConfig config;
 
@@ -248,6 +277,8 @@ ServerConfig parse_server_node(const nlohmann::json& server) {
         assign_if_present(server.at("debug"), "enabled", config.debug.enabled);
     }
 
+    parse_auth(server, config.auth);
+
     parse_runtime(server, config.runtime);
     return config;
 }
@@ -264,6 +295,40 @@ void finalize_server_config(ServerConfig& config) {
     if (config.etcd.registration.addr.empty() && !config.host.empty() && config.grpc.port > 0) {
         config.etcd.registration.addr = config.host + ":" + std::to_string(config.grpc.port);
     }
+    if (config.auth.auth_timeout_seconds == 0) {
+        config.auth.auth_timeout_seconds = 5;
+    }
+    if (config.auth.dev.token_prefix.empty()) {
+        config.auth.dev.token_prefix = "dev:";
+    }
+}
+
+std::optional<std::string> validate_server_config(const ServerConfig& config) {
+    if (!config.auth.explicit_config) {
+        return std::nullopt;
+    }
+
+    if (config.auth.mode != "dev" && config.auth.mode != "jwt") {
+        return std::string("auth.mode must be \"dev\" or \"jwt\", got: ") + config.auth.mode;
+    }
+
+    if (!config.debug.enabled && config.auth.is_dev_mode()) {
+        return "auth.mode=dev is not allowed when server.debug.enabled=false";
+    }
+
+    if (config.auth.is_jwt_mode()) {
+        std::string secret = config.auth.jwt.hmac_secret;
+        if (secret.empty() && !config.auth.jwt.hmac_secret_env.empty()) {
+            if (const char* env_value = std::getenv(config.auth.jwt.hmac_secret_env.c_str())) {
+                secret = env_value;
+            }
+        }
+        if (secret.empty()) {
+            return "auth.mode=jwt requires jwt.hmac_secret or jwt.hmac_secret_env";
+        }
+    }
+
+    return std::nullopt;
 }
 
 [[nodiscard]] std::filesystem::path executable_directory() {
@@ -343,6 +408,9 @@ Result<ServerConfig> load_server_config_from_file(const std::string& path) {
         parse_bizconfig(root, config.bizconfig);
         parse_ai(root, config.ai);
         finalize_server_config(config);
+        if (const auto validation_error = validate_server_config(config)) {
+            return Error{ErrorCode::InvalidArgument, *validation_error};
+        }
         return config;
     } catch (const nlohmann::json::exception& ex) {
         return Error{ErrorCode::InvalidArgument, std::string("json parse failed: ") + ex.what()};

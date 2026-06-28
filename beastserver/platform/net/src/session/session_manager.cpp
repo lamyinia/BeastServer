@@ -328,7 +328,7 @@ bool SessionManager::bind_instance(
 
     const std::shared_ptr<Session> session = find_session(player_id);
     if (!session) {
-        BEAST_LOG_WARN("bind_instance: no session for player {}", player_id);
+        BEAST_LOG_DEBUG("bind_instance: no session for player {}", player_id);
         return false;
     }
 

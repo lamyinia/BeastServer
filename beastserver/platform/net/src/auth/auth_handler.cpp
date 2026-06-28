@@ -28,7 +28,7 @@ void AuthHandler::channel_read(
         return;
     }
 
-    if (!ctx.is_authorized() && message->route == "auth.login") {
+    if (!ctx.is_authorized() && message->route == "auth.login.request") {
         handle_auth_request(ctx, message);
         return;
     }

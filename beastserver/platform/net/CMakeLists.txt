@@ -1,5 +1,6 @@
 find_package(Boost REQUIRED)
 find_package(GTest REQUIRED)
+find_package(OpenSSL REQUIRED)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
@@ -44,6 +45,8 @@ add_library(beast_net STATIC
     src/channel/codec/protobuf_encoder.cpp
     src/channel/tcp_pipeline.cpp
     src/auth/auth_verifier.cpp
+    src/auth/auth_verifier_dev.cpp
+    src/auth/auth_verifier_jwt.cpp
     src/auth/auth_handler.cpp
     src/dispatch/router.cpp
     src/dispatch/router_handler.cpp
@@ -69,6 +72,7 @@ target_link_libraries(beast_net
         beast::core
         beast::net_proto
         Boost::boost
+        OpenSSL::Crypto
         Threads::Threads
 )
 
@@ -103,3 +107,7 @@ add_test(NAME beast_net_session_instance_test COMMAND beast_net_session_instance
 add_executable(beast_net_session_concurrent_test tests/session_manager_concurrent_test.cpp)
 target_link_libraries(beast_net_session_concurrent_test PRIVATE beast_net GTest::gtest_main)
 add_test(NAME beast_net_session_concurrent_test COMMAND beast_net_session_concurrent_test)
+
+add_executable(beast_net_auth_verifier_test tests/auth_verifier_test.cpp)
+target_link_libraries(beast_net_auth_verifier_test PRIVATE beast_net GTest::gtest_main)
+add_test(NAME beast_net_auth_verifier_test COMMAND beast_net_auth_verifier_test)

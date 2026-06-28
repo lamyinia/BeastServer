@@ -1,0 +1,2 @@
+# SDK demo protocol consumers (paths under bizconfig/protocol/game/)
+example/demo_event

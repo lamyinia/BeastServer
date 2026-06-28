@@ -39,7 +39,7 @@ channel::Bytes make_auth_login_frame(const std::string& token, const std::uint64
     auth_req.set_token(token);
 
     ::beast::net::Envelope envelope;
-    envelope.set_route("auth.login");
+    envelope.set_route("auth.login.request");
     const auto payload = auth_req.SerializeAsString();
     envelope.set_payload(payload);
     envelope.set_client_seq(client_seq);
@@ -102,7 +102,7 @@ TEST(TcpLoopbackTest, AuthLoginCreatesSession) {
     boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::make_address("127.0.0.1"), port);
     client.connect(endpoint);
 
-    const auto request = make_auth_login_frame("player42:secret", 7);
+    const auto request = make_auth_login_frame("dev:42", 7);
     boost::asio::write(client, boost::asio::buffer(request));
 
     ::beast::net::Envelope response_envelope;
@@ -153,7 +153,7 @@ TEST(TcpLoopbackTest, RouterDispatchesAfterAuth) {
     boost::asio::ip::tcp::socket client(client_ioc);
     client.connect({boost::asio::ip::make_address("127.0.0.1"), server.listen_port()});
 
-    boost::asio::write(client, boost::asio::buffer(make_auth_login_frame("player99:secret", 1)));
+    boost::asio::write(client, boost::asio::buffer(make_auth_login_frame("dev:99", 1)));
 
     ::beast::net::Envelope auth_envelope;
     ASSERT_TRUE(read_framed_envelope(client, auth_envelope));

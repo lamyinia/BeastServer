@@ -2,43 +2,52 @@ syntax = "proto3";
 
 package beast.demo;
 
-// 客户端 → 服务端：ping1（wire: demo.event.ping1 → engine route: ping1）
+// route:PingRequest1|c2s|demo.event.ping1|ping1
 message PingRequest1 {
   string text = 1;
 }
 
+// PingPush1: ping1 为 req-only，无 s2c push（见 demo_event_engine.cpp）
 message PingPush1 {
   string text = 1;
 }
 
+// route:PingRequest2|c2s|demo.event.ping2|ping2
 message PingRequest2 {
   string text = 1;
 }
 
+// route:PingPush2|s2c|demo.event.pong2
 message PingPush2 {
   string text = 1;
 }
 
+// route:PingRequest3|c2s|demo.event.ping3|ping3
 message PingRequest3 {
   string text = 1;
 }
 
+// route:PingPush3|s2c|demo.event.pong3
 message PingPush3 {
   string text = 1;
 }
 
+// route:PingRequest4|c2s|demo.event.ping4|ping4
 message PingRequest4 {
   string text = 1;
 }
 
+// route:PingPush4|s2c|demo.event.pong4
 message PingPush4 {
   string text = 1;
 }
 
+// route:PingRequest5|c2s|demo.event.ping5|ping5
 message PingRequest5 {
   string text = 1;
 }
 
+// route:PingPush5|s2c|demo.event.pong5
 message PingPush5 {
   string text = 1;
 }

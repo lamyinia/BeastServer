@@ -32,7 +32,7 @@ TEST(ServerConfigTest, LoadsExampleServerJson) {
     EXPECT_TRUE(server.plugins.auto_load);
     EXPECT_TRUE(server.plugins.only.empty());
     EXPECT_TRUE(server.plugins.disable.empty());
-    EXPECT_TRUE(server.bizconfig.enabled);
+    EXPECT_FALSE(server.bizconfig.enabled);
     EXPECT_EQ(server.bizconfig.dir, "bizconfig/server");
     EXPECT_EQ(server.bizconfig.manifest_file, "manifest.json");
     EXPECT_TRUE(server.ai.enabled);
@@ -42,6 +42,11 @@ TEST(ServerConfigTest, LoadsExampleServerJson) {
     EXPECT_EQ(server.ai.default_embedding_model, "doubao-embedding-vision-251215");
     EXPECT_TRUE(server.ai.providers.contains("volcengine"));
     ASSERT_TRUE(server.ai.providers.at("volcengine").embedding_endpoint.find("embeddings") != std::string::npos);
+    EXPECT_TRUE(server.debug.enabled);
+    EXPECT_TRUE(server.auth.explicit_config);
+    EXPECT_TRUE(server.auth.is_dev_mode());
+    EXPECT_EQ(server.auth.dev.token_prefix, "dev:");
+    EXPECT_EQ(server.auth.auth_timeout_seconds, 5u);
 }
 
 TEST(PluginsConfigTest, AutoLoadAllByDefault) {
@@ -86,6 +91,24 @@ TEST(ServerConfigTest, ParsesPluginsOnlyArray) {
     ASSERT_EQ(plugins.only.size(), 2u);
     EXPECT_TRUE(plugins.should_load("mahjong"));
     EXPECT_FALSE(plugins.should_load("moba"));
+}
+
+TEST(ServerConfigTest, RejectsDevAuthWhenDebugDisabled) {
+    const auto temp = std::filesystem::temp_directory_path() / "beastserver-auth-dev-prod-test.json";
+    std::ofstream out(temp);
+    out << R"({
+      "server": {
+        "host": "127.0.0.1",
+        "grpc": { "port": 9010 },
+        "debug": { "enabled": false },
+        "auth": { "mode": "dev" }
+      }
+    })";
+    out.close();
+
+    auto result = load_server_config_from_file(temp.string());
+    ASSERT_FALSE(result.ok());
+    EXPECT_NE(result.error().to_string().find("auth.mode=dev"), std::string::npos);
 }
 
 TEST(ServerConfigTest, MissingFileReturnsNotFound) {

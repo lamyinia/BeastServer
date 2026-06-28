@@ -42,6 +42,8 @@ cd beastserver
 
 见 [excel_header_spec.md](./excel_header_spec.md)（Row1 字段+类型，Row2 约束/`!s!c`）。
 
+样例 Excel：`bizconfig/static-xlsx/example/npc/npc.xlsx`、`bizconfig/static-xlsx/moba/pixel_moba/hero.xlsx`。
+
 ## 常见问题
 
 **脚本报 `biz_export not built`** → 先执行上面「第一次」的 `./build.sh`。
@@ -49,3 +51,7 @@ cd beastserver
 **改了 xlsx 但服里还是旧数据** → 再跑一遍 `cpp-xlsx-export.sh`，然后重启 beastserver。
 
 **Debug 构建** → `BUILD_TYPE=Debug ./tools/scripts/linux/cpp-xlsx-export.sh`
+
+**Windows** → `.\tools\scripts\win\xlsx-export.ps1`
+
+**Godot 同步（pixel-moba）** → 先 xlsx-export，再 `pixel-moba/infra/tools/sync_infra.ps1 -SyncBiz`

@@ -1,0 +1,29 @@
+{
+  "proto_root": "../../bizconfig/protocol",
+  "output_dir": "../godot/beast_sdk/generated",
+  "v1_client_tcp_messages": [
+    {
+      "proto": "platform/envelope.proto",
+      "messages": ["Envelope"]
+    },
+    {
+      "proto": "platform/auth.proto",
+      "messages": ["AuthRequest", "AuthResponse"]
+    }
+  ],
+  "v1_client_tcp_routes": [
+    {
+      "proto": "platform/auth.proto",
+      "out": "auth_routes.gd",
+      "class_name": "AuthRoutes"
+    }
+  ],
+  "grpc_only_messages": [
+    {
+      "proto": "platform/room.proto",
+      "messages": ["CreateRoomRequest", "CreateRoomResponse"],
+      "note": "RoomService.CreateRoom on :9010; not used by beast_sdk"
+    }
+  ],
+  "note": "SDK 仅 platform；demo_event 见 sdk/godot/demo/generated/"
+}

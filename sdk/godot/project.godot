@@ -1,0 +1,14 @@
+; Minimal Godot project for SDK development and headless tests.
+
+config_version=5
+
+[application]
+
+config/name="BeastSDK"
+run/main_scene=""
+
+[autoload]
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://beast_sdk/plugin.cfg")

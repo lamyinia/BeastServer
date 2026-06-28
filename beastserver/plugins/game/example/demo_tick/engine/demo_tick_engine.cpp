@@ -69,11 +69,11 @@ void DemoTickEngine::on_tick(
         return;
     }
 
-    BEAST_LOG_INFO(
-        "demo_tick: tick={} singer1 name={} model={}",
-        tick,
-        sample_npc_name_,
-        sample_npc_model_);
+//    BEAST_LOG_INFO(
+//        "demo_tick: tick={} singer1 name={} model={}",
+//        tick,
+//        sample_npc_name_,
+//        sample_npc_model_);
 }
 
 std::unique_ptr<DemoTickEngine> make_demo_tick_engine() {

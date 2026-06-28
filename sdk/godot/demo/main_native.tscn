@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3 uid="uid://beast_sdk_demo_main_native"]
+
+[ext_resource type="Script" path="res://demo/main_native.gd" id="1_demo"]
+
+[node name="DemoMainNative" type="Node"]
+script = ExtResource("1_demo")
+host = "127.0.0.1"
+port = 8010
+token = "dev:42"
+run_duration_sec = 20.0
+heartbeat_interval_sec = 2.0
