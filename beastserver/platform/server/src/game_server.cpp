@@ -110,25 +110,53 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
     , options_(std::move(options))
     , resolved_plugins_(resolve_plugins_config(config_, options_))
     , resolved_biz_paths_(resolve_biz_paths(config_, options_))
-    , tcp_server_(config_.net.tcp, config_.auth)
+    , io_runner_(std::max<std::size_t>(
+          {config_.net.tcp.io_thread_count, config_.net.kcp.io_thread_count, 1}))
+    , shared_router_(std::make_shared<net::dispatch::Router>())
+    , shared_session_manager_(std::make_shared<net::session::SessionManager>(
+          io_runner_.context().get_executor(),
+          shared_router_,
+          std::chrono::seconds(
+              config_.auth.auth_timeout_seconds == 0 ? 5 : config_.auth.auth_timeout_seconds),
+          net::channel::TcpPipelineOptions{.max_frame_bytes = config_.net.tcp.max_frame_bytes},
+          net::channel::KcpPipelineOptions{
+              .max_frame_bytes = config_.net.kcp.max_frame_bytes,
+              .conv = config_.net.kcp.conv,
+              .snd_wnd = config_.net.kcp.snd_wnd,
+              .rcv_wnd = config_.net.kcp.rcv_wnd,
+              .nodelay = config_.net.kcp.nodelay,
+              .interval = config_.net.kcp.interval,
+              .resend = config_.net.kcp.resend,
+              .nc = config_.net.kcp.nc,
+          },
+          net::auth::make_auth_verifier(config_.auth)))
+    , shared_outbound_hub_(
+          std::make_shared<net::outbound::OutboundHub>(io_runner_.context(), shared_session_manager_))
+    , tcp_server_(
+          config_.net.tcp,
+          config_.auth,
+          io_runner_.context(),
+          shared_router_,
+          shared_session_manager_,
+          shared_outbound_hub_)
     , grpc_server_(config_.grpc.port)
-    , instance_manager_(config_.runtime, &tcp_server_.outbound_hub())
+    , instance_manager_(config_.runtime, shared_outbound_hub_.get())
     , timer_service_(config_.runtime.timer_wheel, &instance_manager_)
     , event_bridge_(
-          &tcp_server_.session_manager(),
+          shared_session_manager_.get(),
           &instance_manager_,
           &player_registry_,
-          &tcp_server_.outbound_hub())
+          shared_outbound_hub_.get())
     , plugin_host_(
           resolved_plugins_,
           &instance_manager_,
-          &tcp_server_.router(),
-          &tcp_server_.session_manager(),
+          shared_router_.get(),
+          shared_session_manager_.get(),
           &player_registry_)
     , room_service_(
           &plugin_host_,
           &player_registry_,
-          &tcp_server_.session_manager(),
+          shared_session_manager_.get(),
           &instance_manager_) {
     instance_manager_.set_timer_service(&timer_service_);
 
@@ -145,16 +173,35 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
         BEAST_LOG_INFO("AI service disabled in server.json");
     }
 
-    tcp_server_.set_on_authenticated([this](const PlayerId& player_id, const std::shared_ptr<net::channel::IChannel>& channel) {
-        if (const auto instance_id = player_registry_.lookup(player_id)) {
-            (void)engine::dispatch::bind_player_to_instance(
-                tcp_server_.session_manager(),
-                instance_manager_,
-                player_id,
-                *instance_id,
-                channel);
-        }
-    });
+    // TCP 与 KCP 共享同一个 SessionManager，所以只装一次 on_authenticated 回调。
+    // 回调内部 bind 到 instance 时使用 shared_session_manager_，与协议无关。
+    shared_session_manager_->set_on_authenticated(
+        [this](const PlayerId& player_id, const std::shared_ptr<net::channel::IChannel>& channel) {
+            if (const auto instance_id = player_registry_.lookup(player_id)) {
+                (void)engine::dispatch::bind_player_to_instance(
+                    *shared_session_manager_,
+                    instance_manager_,
+                    player_id,
+                    *instance_id,
+                    channel);
+            }
+        });
+
+    if (config_.net.kcp.enabled()) {
+        // KCP 共享 TCP 的 SessionManager/Router/OutboundHub：plugin 注册的路由对 TCP/KCP 同时生效。
+        kcp_server_ = std::make_unique<net::server::KcpServer>(
+            config_.net.kcp,
+            io_runner_.context(),
+            shared_router_,
+            shared_session_manager_,
+            shared_outbound_hub_);
+        BEAST_LOG_INFO(
+            "KCP server enabled configured_port={} io_threads={}",
+            config_.net.kcp.port,
+            config_.net.kcp.io_thread_count);
+    } else {
+        BEAST_LOG_INFO("KCP server disabled (net.kcp.port=0)");
+    }
 
     room_grpc_impl_ = std::make_shared<rpc::RoomServiceGrpcImpl>(room_service_);
     grpc_server_.register_service(room_grpc_impl_);
@@ -204,8 +251,16 @@ void GameServer::start() {
 
     event_bridge_.attach_instance_lifecycle();
     plugin_host_.wire_routes();
-    tcp_server_.router().mark_ready();
+    // TCP 与 KCP 共享同一 router；plugin 注册的路由对两者同时生效。
+    shared_router_->mark_ready();
+    // io_runner 是 TcpServer/KcpServer/SessionManager/OutboundHub 的共同 io_context，
+    // 必须先 start io_runner 再 start 两个 server，否则 listener 的 async_accept 无 worker。
+    io_runner_.start();
     tcp_server_.start();
+
+    if (kcp_server_) {
+        kcp_server_->start();
+    }
 
     if (!grpc_server_.start()) {
         BEAST_LOG_ERROR("GameServer gRPC start failed on port {}", config_.grpc.port);
@@ -213,8 +268,9 @@ void GameServer::start() {
 
     running_ = true;
     BEAST_LOG_INFO(
-        "GameServer ready tcp_port={} grpc_port={} gameplay_count={}",
+        "GameServer ready tcp_port={} kcp_port={} grpc_port={} gameplay_count={}",
         tcp_server_.listen_port(),
+        kcp_server_ ? kcp_server_->listen_port() : 0,
         config_.grpc.port,
         plugin_host_.engine_count());
 }
@@ -226,7 +282,11 @@ void GameServer::stop() {
 
     BEAST_LOG_INFO("GameServer stopping");
     grpc_server_.stop();
+    if (kcp_server_) {
+        kcp_server_->stop();
+    }
     tcp_server_.stop();
+    io_runner_.stop();
     timer_service_.stop();
     instance_manager_.stop();
     ai_facade_.reset();

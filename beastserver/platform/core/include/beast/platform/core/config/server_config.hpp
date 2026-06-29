@@ -17,8 +17,26 @@ struct TcpConfig {
     std::uint32_t io_thread_count{4};
 };
 
+/// KCP over UDP 配置。字段对应 ikcp 协议参数（接入 ikcp 后由 KcpTransport 消费）。
+/// conv=0 表示由握手协商；预热阶段协议参数未实际生效。
+struct KcpConfig {
+    std::uint16_t port{0};            // 0 表示不启用 KCP 接入
+    std::uint32_t max_frame_bytes{64 * 1024};
+    std::uint32_t io_thread_count{2};
+    std::uint32_t conv{0};            // 会话 id；0 = 握手协商
+    std::uint32_t snd_wnd{32};        // 发送窗口
+    std::uint32_t rcv_wnd{32};        // 接收窗口
+    std::uint32_t nodelay{1};         // 1 = 快速模式
+    std::uint32_t interval{10};       // update 间隔（ms）
+    std::uint32_t resend{2};          // 快速重传阈值
+    std::uint32_t nc{1};              // 1 = 关闭拥塞控制
+
+    [[nodiscard]] bool enabled() const noexcept { return port > 0; }
+};
+
 struct NetConfig {
     TcpConfig tcp;
+    KcpConfig kcp;
 };
 
 struct LogConfig {

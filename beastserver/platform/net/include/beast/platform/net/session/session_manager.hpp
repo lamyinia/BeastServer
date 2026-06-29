@@ -3,6 +3,7 @@
 #include "beast/platform/core/types.hpp"
 #include "beast/platform/net/auth/auth_verifier.hpp"
 #include "beast/platform/net/channel/i_channel.hpp"
+#include "beast/platform/net/channel/kcp_pipeline.hpp"
 #include "beast/platform/net/channel/tcp_channel.hpp"
 #include "beast/platform/net/channel/tcp_pipeline.hpp"
 #include "beast/platform/net/dispatch/router.hpp"
@@ -36,6 +37,16 @@ public:
         std::shared_ptr<dispatch::Router> router,
         std::chrono::milliseconds auth_timeout = std::chrono::seconds(5),
         channel::TcpPipelineOptions pipeline_options = {},
+        auth::AuthVerifier auth_verifier = auth::default_token_verifier());
+
+    /// 共享模式构造：允许 GameServer 注入同一个 SessionManager 到 TcpServer/KcpServer。
+    /// pipeline_options_tcp/kcp 控制各自协议的 codec 参数；router/auth_verifier 共享。
+    SessionManager(
+        boost::asio::any_io_executor executor,
+        std::shared_ptr<dispatch::Router> router,
+        std::chrono::milliseconds auth_timeout,
+        channel::TcpPipelineOptions pipeline_options_tcp,
+        channel::KcpPipelineOptions pipeline_options_kcp,
         auth::AuthVerifier auth_verifier = auth::default_token_verifier());
 
     void set_on_authenticated(OnAuthenticated callback);
@@ -101,7 +112,8 @@ private:
     boost::asio::any_io_executor executor_;
     std::shared_ptr<dispatch::Router> router_;
     std::chrono::milliseconds auth_timeout_;
-    channel::TcpPipelineOptions pipeline_options_;
+    channel::TcpPipelineOptions pipeline_options_tcp_;
+    channel::KcpPipelineOptions pipeline_options_kcp_;
     auth::AuthVerifier auth_verifier_;
     OnAuthenticated on_authenticated_;
 

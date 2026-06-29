@@ -9,6 +9,8 @@
 #include "beast/platform/engine/instance/instance_manager.hpp"
 #include "beast/platform/engine/plugin/plugin_host.hpp"
 #include "beast/platform/engine/timer/timer_service.hpp"
+#include "beast/platform/net/io/io_context_runner.hpp"
+#include "beast/platform/net/server/kcp_server.hpp"
 #include "beast/platform/net/server/tcp_server.hpp"
 #include "beast/platform/rpc/grpc_server.hpp"
 #include "beast/platform/server/room_service_grpc.hpp"
@@ -35,6 +37,7 @@ public:
     [[nodiscard]] bool running() const noexcept { return running_; }
 
     [[nodiscard]] net::server::TcpServer& tcp_server() noexcept { return tcp_server_; }
+    [[nodiscard]] net::server::KcpServer* kcp_server() noexcept { return kcp_server_.get(); }
     [[nodiscard]] rpc::GrpcServer& grpc_server() noexcept { return grpc_server_; }
     [[nodiscard]] engine::instance::InstanceManager& instance_manager() noexcept {
         return instance_manager_;
@@ -72,7 +75,17 @@ private:
     bizutil::config::BizPaths resolved_biz_paths_;
     bool running_{false};
 
+    /// 共享 io_runner：TcpServer / KcpServer / SessionManager / OutboundHub 共用同一 io_context。
+    /// 必须在 shared_* 与 tcp_server_ 之前声明（C++ 按声明顺序初始化）。
+    net::io::IoContextRunner io_runner_;
+
+    /// 共享给 TcpServer / KcpServer 的三件套。
+    std::shared_ptr<net::dispatch::Router> shared_router_;
+    std::shared_ptr<net::session::SessionManager> shared_session_manager_;
+    std::shared_ptr<net::outbound::OutboundHub> shared_outbound_hub_;
+
     net::server::TcpServer tcp_server_;
+    std::unique_ptr<net::server::KcpServer> kcp_server_;
     rpc::GrpcServer grpc_server_;
     engine::instance::InstanceManager instance_manager_;
     engine::timer::TimerService timer_service_;

@@ -7,7 +7,7 @@ message PingRequest1 {
   string text = 1;
 }
 
-// PingPush1: ping1 为 req-only，无 s2c push（见 demo_event_engine.cpp）
+// route:PingPush1|s2c|demo.event.pong1
 message PingPush1 {
   string text = 1;
 }

@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package beast.moba.pixel;
+
+import "game/moba/common/types.proto";
+
+// route:MoveCmd|c2s|pixel_moba.move|move
+message MoveCmd {
+  beast.moba.common.Vec2 dir = 1;
+  repeated int32 path = 2;
+}

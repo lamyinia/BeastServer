@@ -40,6 +40,7 @@ pip install -r sdk/tools/requirements.txt   # google.protobuf
 - `repeated`（含 scalar / enum / message；数值型 proto3 默认 **packed**）
 - 嵌套 message（扁平化为 `Beast{Parent}{Child}`，如 `Player.Position` → `BeastPlayerPosition`）
 - enum（独立 `{enum}.gd` const 类，字段类型为 `int`）
+- **跨文件 `import`**：默认 emit 目标 proto + 同 scope 依赖（`game/*` import `game/*`）到同一 `--out-dir`；`--no-emit-imports` 恢复旧行为
 
 **未支持：**
 

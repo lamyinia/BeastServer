@@ -36,14 +36,24 @@ add_library(beast::net_proto ALIAS beast_net_proto)
 target_link_libraries(beast_net_proto PUBLIC protobuf::libprotobuf)
 target_include_directories(beast_net_proto PUBLIC ${BEAST_GENERATED_DIR})
 
+add_library(beast_kcp STATIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/kcp/ikcp.c)
+set_target_properties(beast_kcp PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    LINKER_LANGUAGE C)
+target_include_directories(beast_kcp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/kcp)
+target_link_libraries(beast_kcp PUBLIC Threads::Threads)
+add_library(beast::kcp ALIAS beast_kcp)
+
 add_library(beast_net STATIC
     src/channel/channel_pipeline.cpp
     src/channel/tcp_channel.cpp
+    src/channel/kcp_channel.cpp
     src/channel/codec/length_field_decoder.cpp
     src/channel/codec/length_field_encoder.cpp
     src/channel/codec/protobuf_decoder.cpp
     src/channel/codec/protobuf_encoder.cpp
     src/channel/tcp_pipeline.cpp
+    src/channel/kcp_pipeline.cpp
     src/auth/auth_verifier.cpp
     src/auth/auth_verifier_dev.cpp
     src/auth/auth_verifier_jwt.cpp
@@ -51,12 +61,15 @@ add_library(beast_net STATIC
     src/dispatch/router.cpp
     src/dispatch/router_handler.cpp
     src/channel/transport/tcp_transport.cpp
+    src/channel/transport/kcp_transport.cpp
     src/session/session.cpp
     src/session/session_manager.cpp
     src/outbound/outbound_hub.cpp
     src/listener/tcp_listener.cpp
+    src/listener/udp_listener.cpp
     src/io/io_context_runner.cpp
     src/server/tcp_server.cpp
+    src/server/kcp_server.cpp
 )
 
 add_library(beast::net ALIAS beast_net)
@@ -71,6 +84,7 @@ target_link_libraries(beast_net
     PUBLIC
         beast::core
         beast::net_proto
+        beast::kcp
         Boost::boost
         OpenSSL::Crypto
         Threads::Threads
@@ -99,6 +113,10 @@ add_test(NAME beast_net_protobuf_codec_test COMMAND beast_net_protobuf_codec_tes
 add_executable(beast_net_tcp_loopback_test tests/tcp_loopback_test.cpp)
 target_link_libraries(beast_net_tcp_loopback_test PRIVATE beast_net GTest::gtest_main)
 add_test(NAME beast_net_tcp_loopback_test COMMAND beast_net_tcp_loopback_test)
+
+add_executable(beast_net_kcp_loopback_test tests/kcp_loopback_test.cpp)
+target_link_libraries(beast_net_kcp_loopback_test PRIVATE beast_net GTest::gtest_main)
+add_test(NAME beast_net_kcp_loopback_test COMMAND beast_net_kcp_loopback_test)
 
 add_executable(beast_net_session_instance_test tests/session_instance_test.cpp)
 target_link_libraries(beast_net_session_instance_test PRIVATE beast_net GTest::gtest_main)

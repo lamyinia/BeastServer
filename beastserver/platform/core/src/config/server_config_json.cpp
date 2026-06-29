@@ -23,6 +23,19 @@ void parse_tcp(const nlohmann::json& tcp, TcpConfig& out) {
     assign_if_present(tcp, "io_thread_count", out.io_thread_count);
 }
 
+void parse_kcp(const nlohmann::json& kcp, KcpConfig& out) {
+    assign_if_present(kcp, "port", out.port);
+    assign_if_present(kcp, "max_frame_bytes", out.max_frame_bytes);
+    assign_if_present(kcp, "io_thread_count", out.io_thread_count);
+    assign_if_present(kcp, "conv", out.conv);
+    assign_if_present(kcp, "snd_wnd", out.snd_wnd);
+    assign_if_present(kcp, "rcv_wnd", out.rcv_wnd);
+    assign_if_present(kcp, "nodelay", out.nodelay);
+    assign_if_present(kcp, "interval", out.interval);
+    assign_if_present(kcp, "resend", out.resend);
+    assign_if_present(kcp, "nc", out.nc);
+}
+
 void parse_log(const nlohmann::json& log, LogConfig& out) {
     assign_if_present(log, "level", out.level);
     assign_if_present(log, "short_source", out.short_source);
@@ -260,6 +273,9 @@ ServerConfig parse_server_node(const nlohmann::json& server) {
 
     if (server.contains("net") && server.at("net").contains("tcp")) {
         parse_tcp(server.at("net").at("tcp"), config.net.tcp);
+    }
+    if (server.contains("net") && server.at("net").contains("kcp")) {
+        parse_kcp(server.at("net").at("kcp"), config.net.kcp);
     }
     if (server.contains("log")) {
         parse_log(server.at("log"), config.log);

@@ -86,7 +86,16 @@ bool ServerContext::submit_instance_event(
     const net::channel::MessagePtr& msg,
     RouteId engine_route,
     std::vector<std::uint8_t> payload) {
-    if (!instance_manager_) {
+    return submit_instance_event(instance_manager_, ch_ctx, msg, std::move(engine_route), std::move(payload));
+}
+
+bool ServerContext::submit_instance_event(
+    engine::instance::InstanceManager* instance_manager,
+    net::channel::ChannelHandlerContext& ch_ctx,
+    const net::channel::MessagePtr& msg,
+    RouteId engine_route,
+    std::vector<std::uint8_t> payload) {
+    if (!instance_manager) {
         ch_ctx.send_error_response(msg, "engine unavailable");
         return false;
     }
@@ -118,7 +127,7 @@ bool ServerContext::submit_instance_event(
         instance_id,
         ch_ctx.player_id());
 
-    if (!instance_manager_->submit_event(event)) {
+    if (!instance_manager->submit_event(event)) {
         ch_ctx.send_error_response(msg, "submit failed");
         return false;
     }

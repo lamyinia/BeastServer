@@ -43,12 +43,24 @@ std::shared_ptr<channel::IChannel> Session::select_channel(
     };
 
     switch (preference) {
-    case outbound::ProtocolPreference::PreferTcp:
-        return find_by_type(channel::ChannelType::Tcp);
-    case outbound::ProtocolPreference::PreferWebsocket:
-        return find_by_type(channel::ChannelType::Websocket);
-    case outbound::ProtocolPreference::PreferKcp:
-        return find_by_type(channel::ChannelType::Kcp);
+    case outbound::ProtocolPreference::PreferTcp: {
+        if (const auto ch = find_by_type(channel::ChannelType::Tcp)) {
+            return ch;
+        }
+        return find_any();
+    }
+    case outbound::ProtocolPreference::PreferWebsocket: {
+        if (const auto ch = find_by_type(channel::ChannelType::Websocket)) {
+            return ch;
+        }
+        return find_any();
+    }
+    case outbound::ProtocolPreference::PreferKcp: {
+        if (const auto ch = find_by_type(channel::ChannelType::Kcp)) {
+            return ch;
+        }
+        return find_any();
+    }
     case outbound::ProtocolPreference::TcpOnly:
         return find_by_type(channel::ChannelType::Tcp);
     case outbound::ProtocolPreference::WebsocketOnly:

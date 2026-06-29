@@ -219,6 +219,16 @@ class ProtoEnum:
     class_name: str
     file_stem: str
     values: tuple[tuple[str, int], ...]
+    source_file: str = ""
+
+
+@dataclass(frozen=True)
+class ProtoMessage:
+    name: str
+    class_name: str
+    file_stem: str
+    fields: tuple[ProtoField, ...]
+    source_file: str = ""
 
 
 @dataclass(frozen=True)
@@ -234,14 +244,6 @@ class ProtoField:
     default_expr: str = ""
     packed: bool = False
     packed_codec: str = ""
-
-
-@dataclass(frozen=True)
-class ProtoMessage:
-    name: str
-    class_name: str
-    file_stem: str
-    fields: tuple[ProtoField, ...]
 
 
 @dataclass(frozen=True)
@@ -274,17 +276,113 @@ def message_to_snake(name: str) -> str:
     return "".join(out)
 
 
-def _file_desc_matches_proto(proto_path: Path, includes: list[Path], file_name: str) -> bool:
-    normalized = file_name.replace("\\", "/")
+def _resolve_descriptor_name(proto_path: Path, includes: list[Path]) -> str:
     resolved = proto_path.resolve()
     for inc in includes:
         try:
-            rel = resolved.relative_to(inc.resolve()).as_posix()
-            if rel == normalized:
-                return True
+            return resolved.relative_to(inc.resolve()).as_posix()
         except ValueError:
             continue
-    return Path(normalized).name == resolved.name
+    return resolved.name
+
+
+def _normalize_proto_path(name: str) -> str:
+    return name.replace("\\", "/")
+
+
+def _is_well_known_proto(name: str) -> bool:
+    return _normalize_proto_path(name).startswith("google/protobuf/")
+
+
+def _proto_scope(name: str) -> str:
+    normalized = _normalize_proto_path(name)
+    if normalized.startswith("game/"):
+        return "game"
+    if normalized.startswith("platform/"):
+        return "platform"
+    return "other"
+
+
+def _should_emit_import(dep_name: str, *, target_name: str) -> bool:
+    if _is_well_known_proto(dep_name):
+        return False
+    target_scope = _proto_scope(target_name)
+    dep_scope = _proto_scope(dep_name)
+    if target_scope == "game":
+        return dep_scope == "game"
+    if target_scope == "platform":
+        return dep_scope == "platform"
+    return True
+
+
+def _collect_emit_file_names(
+    files_by_name: dict[str, descriptor_pb2.FileDescriptorProto],
+    target_name: str,
+    *,
+    emit_imports: bool,
+) -> list[str]:
+    target_name = _normalize_proto_path(target_name)
+    if not emit_imports:
+        return [target_name]
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    def visit(name: str) -> None:
+        name = _normalize_proto_path(name)
+        if name in seen:
+            return
+        seen.add(name)
+        file_desc = files_by_name.get(name)
+        if file_desc is None:
+            return
+        for dep in file_desc.dependency:
+            if _should_emit_import(dep, target_name=target_name):
+                visit(dep)
+        ordered.append(name)
+
+    visit(target_name)
+    return ordered
+
+
+def _load_descriptor_set(
+    proto_path: Path,
+    *,
+    protoc: str,
+    include_paths: list[Path],
+) -> tuple[descriptor_pb2.FileDescriptorSet, list[Path]]:
+    proto_path = proto_path.resolve()
+    if not proto_path.is_file():
+        raise FileNotFoundError(proto_path)
+
+    includes = [p.resolve() for p in include_paths]
+    if proto_path.parent not in includes:
+        includes.append(proto_path.parent)
+
+    with tempfile.NamedTemporaryFile(suffix=".pb", delete=False) as tmp:
+        desc_path = Path(tmp.name)
+
+    try:
+        cmd = [protoc, f"--descriptor_set_out={desc_path}", "--include_imports"]
+        for inc in includes:
+            cmd.append(f"-I{inc}")
+        cmd.append(str(proto_path))
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()
+            raise RuntimeError(f"protoc failed for {proto_path}:\n{detail}")
+
+        fds = descriptor_pb2.FileDescriptorSet()
+        fds.ParseFromString(desc_path.read_bytes())
+    finally:
+        desc_path.unlink(missing_ok=True)
+
+    return fds, includes
+
+
+def _file_desc_matches_proto(proto_path: Path, includes: list[Path], file_name: str) -> bool:
+    return _normalize_proto_path(file_name) == _resolve_descriptor_name(proto_path, includes)
 
 
 def _compound_name(path_parts: tuple[str, ...]) -> str:
@@ -333,6 +431,7 @@ def _build_type_registries(
                 class_name=f"{class_prefix}{compound}",
                 file_stem=message_to_snake(compound),
                 values=tuple((v.name, v.number) for v in enum.value),
+                source_file=file_desc.name,
             )
             enums.append(enum_def)
             _register_keys(enum_registry, enum_keys(parent_parts, enum.name), enum_def)
@@ -346,6 +445,7 @@ def _build_type_registries(
                 class_name=f"{class_prefix}{compound}",
                 file_stem=message_to_snake(compound),
                 fields=(),
+                source_file=file_desc.name,
             )
             messages.append(msg_def)
             _register_keys(message_registry, message_keys(parent_parts, msg.name), msg_def)
@@ -357,6 +457,39 @@ def _build_type_registries(
     walk_messages((), file_desc.message_type)
 
     return enum_registry, message_registry, enums, messages
+
+
+def _merge_type_registries(
+    file_descs: list[descriptor_pb2.FileDescriptorProto],
+    *,
+    class_prefix: str,
+) -> tuple[dict[str, ProtoEnum], dict[str, ProtoMessage]]:
+    enum_registry: dict[str, ProtoEnum] = {}
+    message_registry: dict[str, ProtoMessage] = {}
+    class_name_files: dict[str, str] = {}
+
+    for file_desc in file_descs:
+        er, mr, _, _ = _build_type_registries(file_desc, class_prefix=class_prefix)
+        for enum_def in er.values():
+            prev = class_name_files.get(enum_def.class_name)
+            if prev is not None and prev != file_desc.name:
+                raise ValueError(
+                    f"class_name collision {enum_def.class_name!r}: "
+                    f"{file_desc.name} vs {prev}"
+                )
+            class_name_files[enum_def.class_name] = file_desc.name
+        for msg_def in mr.values():
+            prev = class_name_files.get(msg_def.class_name)
+            if prev is not None and prev != file_desc.name:
+                raise ValueError(
+                    f"class_name collision {msg_def.class_name!r}: "
+                    f"{file_desc.name} vs {prev}"
+                )
+            class_name_files[msg_def.class_name] = file_desc.name
+        enum_registry.update(er)
+        message_registry.update(mr)
+
+    return enum_registry, message_registry
 
 
 def _lookup(registry: dict[str, object], type_name: str) -> object | None:
@@ -493,6 +626,7 @@ def _fill_message_fields(
                     class_name=old.class_name,
                     file_stem=old.file_stem,
                     fields=fields,
+                    source_file=old.source_file,
                 )
             )
             walk_messages((*parent_parts, msg.name), msg.nested_type)
@@ -507,45 +641,36 @@ def parse_proto_messages(
     protoc: str,
     include_paths: list[Path],
     class_prefix: str = "Beast",
+    emit_imports: bool = True,
 ) -> ProtoParseResult:
-    proto_path = proto_path.resolve()
-    if not proto_path.is_file():
-        raise FileNotFoundError(proto_path)
+    fds, includes = _load_descriptor_set(proto_path, protoc=protoc, include_paths=include_paths)
+    target_name = _resolve_descriptor_name(proto_path.resolve(), includes)
+    files_by_name = {_normalize_proto_path(f.name): f for f in fds.file}
 
-    includes = [p.resolve() for p in include_paths]
-    if proto_path.parent not in includes:
-        includes.append(proto_path.parent)
+    if target_name not in files_by_name:
+        raise RuntimeError(f"target proto missing from descriptor set: {target_name}")
 
-    with tempfile.NamedTemporaryFile(suffix=".pb", delete=False) as tmp:
-        desc_path = Path(tmp.name)
+    emit_names = _collect_emit_file_names(files_by_name, target_name, emit_imports=emit_imports)
+    lookup_files = [
+        file_desc
+        for name, file_desc in files_by_name.items()
+        if not _is_well_known_proto(name)
+    ]
+    enum_registry, message_registry = _merge_type_registries(
+        lookup_files, class_prefix=class_prefix
+    )
 
-    try:
-        cmd = [protoc, f"--descriptor_set_out={desc_path}", "--include_imports"]
-        for inc in includes:
-            cmd.append(f"-I{inc}")
-        cmd.append(str(proto_path))
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            detail = (result.stderr or result.stdout or "").strip()
-            raise RuntimeError(f"protoc failed for {proto_path}:\n{detail}")
-
-        fds = descriptor_pb2.FileDescriptorSet()
-        fds.ParseFromString(desc_path.read_bytes())
-    finally:
-        desc_path.unlink(missing_ok=True)
-
-    target_name = proto_path.resolve()
     all_enums: list[ProtoEnum] = []
     all_messages: list[ProtoMessage] = []
+    seen_enum_stems: set[str] = set()
+    seen_message_stems: set[str] = set()
 
-    for file_desc in fds.file:
-        if not _file_desc_matches_proto(target_name, includes, file_desc.name):
+    for name in emit_names:
+        file_desc = files_by_name.get(_normalize_proto_path(name))
+        if file_desc is None:
             continue
 
-        enum_registry, message_registry, enums, messages = _build_type_registries(
-            file_desc, class_prefix=class_prefix
-        )
+        _, _, enums, messages = _build_type_registries(file_desc, class_prefix=class_prefix)
         filled = _fill_message_fields(
             file_desc,
             class_prefix=class_prefix,
@@ -553,8 +678,18 @@ def parse_proto_messages(
             message_registry=message_registry,
             messages=messages,
         )
-        all_enums.extend(enums)
-        all_messages.extend(filled)
+
+        for enum_def in enums:
+            if enum_def.file_stem in seen_enum_stems:
+                continue
+            seen_enum_stems.add(enum_def.file_stem)
+            all_enums.append(enum_def)
+
+        for message in filled:
+            if message.file_stem in seen_message_stems:
+                continue
+            seen_message_stems.add(message.file_stem)
+            all_messages.append(message)
 
     return ProtoParseResult(enums=tuple(all_enums), messages=tuple(all_messages))
 
@@ -842,6 +977,11 @@ def main() -> int:
         default=[],
         help="Extra -I include path (repeatable)",
     )
+    parser.add_argument(
+        "--no-emit-imports",
+        action="store_true",
+        help="Only emit messages/enums from --proto itself (legacy behavior)",
+    )
     args = parser.parse_args()
 
     if not args.proto.is_file():
@@ -856,6 +996,7 @@ def main() -> int:
             protoc=protoc,
             include_paths=includes,
             class_prefix=args.class_prefix,
+            emit_imports=not args.no_emit_imports,
         )
     except (RuntimeError, ValueError, FileNotFoundError) as exc:
         print(str(exc), file=sys.stderr)
@@ -871,7 +1012,8 @@ def main() -> int:
     written = 0
     for enum_def in parsed.enums:
         out_path = args.out_dir / f"{enum_def.file_stem}.gd"
-        gd = emit_enum_gdscript(enum_def, proto_path=args.proto)
+        source = enum_def.source_file or args.proto.as_posix()
+        gd = emit_enum_gdscript(enum_def, proto_path=Path(source))
         out_path.write_text(gd, encoding="utf-8")
         print(f"Wrote {out_path}")
         written += 1
@@ -879,9 +1021,10 @@ def main() -> int:
     for message in parsed.messages:
         out_path = args.out_dir / f"{message.file_stem}.gd"
         load_res = f"{load_prefix}{message.file_stem}.gd"
+        source = message.source_file or args.proto.as_posix()
         gd = emit_message_gdscript(
             message,
-            proto_path=args.proto,
+            proto_path=Path(source),
             wire_codec_preload=args.wire_codec_preload,
             load_res=load_res,
         )

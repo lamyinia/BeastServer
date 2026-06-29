@@ -16,8 +16,10 @@ public:
     void on_event(const beast::platform::engine::instance::InstanceEvent& event) override;
 
 private:
-    // BEAST_ENGINE_EVENT_PROTO_REQ_THIS：只要 payload，不回包
-    void on_ping_1(const beast::demo::PingRequest1& request);
+    // BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS：player_id + payload，常规回包
+    void on_ping_1(
+        const beast::platform::PlayerId& player_id,
+        const beast::demo::PingRequest1& request);
 
     // BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS：player_id + payload，常规回包
     void on_ping_2(

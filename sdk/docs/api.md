@@ -90,13 +90,13 @@ func _on_pong2(payload: PackedByteArray, _seq: int) -> void:
 
 ```text
 pixel-moba/
-├── addons/beast_sdk/              ← SDK（sync_beast_sdk.ps1 同步）
+├── addons/beast_sdk/              ← SDK（sync_infra.ps1 -SyncSdk 同步）
 ├── infra/
 │   ├── network/
 │   │   ├── beast_network.gd       ← Autoload: BeastNetwork
 │   │   ├── dev_bootstrap.gd       ← 主场景：连服务器
 │   │   └── dev_session.gd         ← 开发：demo ping2 心跳
-│   └── tools/sync_beast_sdk.ps1
+│   └── tools/sync_infra.ps1
 ├── control.tscn                   ← 主场景（含 DevBootstrap + DevSession）
 └── project.godot
 ```

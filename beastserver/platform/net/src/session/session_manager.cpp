@@ -46,7 +46,22 @@ SessionManager::SessionManager(
     : executor_(std::move(executor))
     , router_(std::move(router))
     , auth_timeout_(auth_timeout)
-    , pipeline_options_(pipeline_options)
+    , pipeline_options_tcp_(pipeline_options)
+    , pipeline_options_kcp_{.max_frame_bytes = pipeline_options.max_frame_bytes}
+    , auth_verifier_(auth_verifier ? std::move(auth_verifier) : auth::default_token_verifier()) {}
+
+SessionManager::SessionManager(
+    boost::asio::any_io_executor executor,
+    std::shared_ptr<dispatch::Router> router,
+    const std::chrono::milliseconds auth_timeout,
+    channel::TcpPipelineOptions pipeline_options_tcp,
+    channel::KcpPipelineOptions pipeline_options_kcp,
+    auth::AuthVerifier auth_verifier)
+    : executor_(std::move(executor))
+    , router_(std::move(router))
+    , auth_timeout_(auth_timeout)
+    , pipeline_options_tcp_(pipeline_options_tcp)
+    , pipeline_options_kcp_(pipeline_options_kcp)
     , auth_verifier_(auth_verifier ? std::move(auth_verifier) : auth::default_token_verifier()) {}
 
 void SessionManager::set_on_authenticated(OnAuthenticated callback) {
@@ -74,7 +89,14 @@ void SessionManager::register_pending_connection(PendingConnection pending) {
         start_auth_timeout(connection_id, it->second);
     }
 
-    channel::install_tcp_pipeline(bound_channel, pipeline_options_);
+    // 按 channel 类型分发 pipeline：TCP 走 tcp_pipeline，KCP 走 kcp_pipeline。
+    // 两者均安装 LengthField + Protobuf codec，但 KCP 的 KcpPipelineOptions 携带 conv/snd_wnd 等
+    // 协议参数（虽然 KCP 协议参数在 transport 层消费，pipeline 仅用 max_frame_bytes）。
+    if (bound_channel->type() == channel::ChannelType::Kcp) {
+        channel::install_kcp_pipeline(bound_channel, pipeline_options_kcp_);
+    } else {
+        channel::install_tcp_pipeline(bound_channel, pipeline_options_tcp_);
+    }
 
     const auto self = shared_from_this();
     bound_channel->add_inbound(std::make_shared<auth::AuthHandler>(

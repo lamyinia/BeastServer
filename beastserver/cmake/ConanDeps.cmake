@@ -31,6 +31,15 @@ function(beast_configure_conan_protoc)
 endfunction()
 
 function(beast_find_conan_grpc)
-    set(gRPC_DIR "${CMAKE_BINARY_DIR}" CACHE PATH "Conan gRPC cmake config" FORCE)
+    # Conan (CMakeDeps) 把 gRPCConfig.cmake 与 conan_toolchain.cmake 生成在同一目录。
+    # 直接用 ${CMAKE_BINARY_DIR} 在 IDE 场景下不可靠：CLion 的 generation dir 可能
+    # 是相对项目根而非源码根，导致 CMAKE_BINARY_DIR 与 Conan 安装目录不一致。
+    # CMAKE_TOOLCHAIN_FILE 由 IDE/命令行显式传入绝对路径，取其目录即 Conan 安装目录。
+    if(DEFINED CMAKE_TOOLCHAIN_FILE AND EXISTS "${CMAKE_TOOLCHAIN_FILE}")
+        get_filename_component(_beast_conan_dir "${CMAKE_TOOLCHAIN_FILE}" DIRECTORY)
+    else()
+        set(_beast_conan_dir "${CMAKE_BINARY_DIR}")
+    endif()
+    set(gRPC_DIR "${_beast_conan_dir}" CACHE PATH "Conan gRPC cmake config" FORCE)
     find_package(gRPC CONFIG REQUIRED NO_DEFAULT_PATH)
 endfunction()

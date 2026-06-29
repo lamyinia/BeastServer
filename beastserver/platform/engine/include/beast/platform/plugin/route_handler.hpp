@@ -71,18 +71,22 @@ void register_parsed_route(
 }
 
 // 局内操作（payload 原样转发）：wire route → Session 查 instance → submit_event。
+// 注意：handler 长期存放在 Router，必须捕获 instance_manager 原始指针（GameServer 持有，
+// 与 Router 同生命周期），而非 ServerContext 引用——后者是 invoke_plugin 的栈对象，
+// 函数返回即析构，会留下悬空引用。
 inline void register_instance_route(
     ServerContext& ctx,
     RouteId wire_route,
     RouteId engine_route = {}) {
     const RouteId resolved_engine_route = engine_route.empty() ? wire_route : engine_route;
+    auto* instance_manager = ctx.instance_manager_ptr();
     ctx.register_route(
         wire_route,
-        [&ctx, resolved_engine_route](
+        [instance_manager, resolved_engine_route](
             net::channel::ChannelHandlerContext& ch_ctx,
             const net::channel::MessagePtr& msg) {
-            (void)ctx.submit_instance_event(
-                ch_ctx, msg, resolved_engine_route, msg->payload);
+            (void)ServerContext::submit_instance_event(
+                instance_manager, ch_ctx, msg, resolved_engine_route, msg->payload);
         });
 }
 
@@ -93,9 +97,10 @@ void register_instance_route(
     RouteId wire_route,
     RouteId engine_route,
     PayloadFn&& make_payload) {
+    auto* instance_manager = ctx.instance_manager_ptr();
     ctx.register_route(
         wire_route,
-        [&ctx,
+        [instance_manager,
          engine_route,
          wire_route,
          make_payload = std::forward<PayloadFn>(make_payload)](
@@ -107,7 +112,8 @@ void register_instance_route(
             }
 
             std::vector<std::uint8_t> payload = make_payload(request);
-            (void)ctx.submit_instance_event(ch_ctx, msg, engine_route, std::move(payload));
+            (void)ServerContext::submit_instance_event(
+                instance_manager, ch_ctx, msg, engine_route, std::move(payload));
         });
 }
 

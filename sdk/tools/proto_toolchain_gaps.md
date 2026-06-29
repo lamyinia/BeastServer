@@ -32,7 +32,7 @@
 
 | 优先级 | 缺口 | 影响 |
 |--------|------|------|
-| **P0** | 跨文件 `import` | MOBA 共享类型无法自动拉齐依赖 |
+| **P0** | ~~跨文件 `import`~~ | ✅ 默认 emit 目标 + game/platform 同 scope 依赖 |
 | ~~**P0**~~ | ~~`packed repeated`~~ | ✅ 已实现（proto3 默认 packed + decode 兼容 unpacked） |
 | **P0** | `map` / `oneof` | 常见游戏协议结构无法生成 |
 | ~~**P0**~~ | ~~脏生成物 / stub~~ | ✅ 已清理 ping/room 遗留 |
@@ -54,30 +54,20 @@
 
 ## 3. P0 — MOBA 协议落地前建议先补
 
-### 3.1 跨文件 `import` 未覆盖
+### 3.1 ~~跨文件 `import` 未覆盖~~ ✅ 已支持
 
-**现状：**
+**现状（2025-06）：**
 
-- `gen_messages_from_proto.py` 按**单个** `--proto` 文件生成，只 emit 该文件内定义的 message/enum。
-- 当前 `bizconfig/protocol` 下**无任何 `import`** 语句。
+- `protoc --include_imports` 解析依赖；类型注册表合并所有非 `google/protobuf/*` 文件
+- 默认 emit 目标 proto + 同 scope 的 transitive import（`game/*` → `game/*`）
+- 依赖与目标写入同一 `--out-dir`；`--no-emit-imports` 仅 emit 目标文件
 
-**问题场景：**
+**bizconfig 示例：**
 
-```protobuf
-// game/moba/pixel_moba/move.proto
-import "game/moba/common/types.proto";
+- `game/moba/common/types.proto` — `Vec2`、`Vec2i`
+- `game/moba/pixel_moba/move.proto` — `import` common，生成 `vec2.gd` + `move_cmd.gd`
 
-message MoveCmd {
-  common.Vec2 dir = 1;
-}
-```
-
-生成 `MoveCmd` 时字段引用 `BeastVec2`，但 **`vec2.gd` 不会自动生成**，除非单独对 `types.proto` 再跑一遍，且需保证输出目录与类名不冲突。
-
-**建议：**
-
-- register 目录级扫描，构建 proto 依赖图，按拓扑顺序生成；或
-- 单次 invocation 解析 descriptor set 内全部相关 file，合并 emit。
+**注意：** 不同 proto 若产生相同 `class_name` 会报错；共享类型放 `game/moba/common/` 并保持 message 名唯一。
 
 ---
 
@@ -291,7 +281,7 @@ manifest 示例：
 ```
 1. ~~清理 beast_sdk/generated 脏文件~~ ✅
 2. ~~packed repeated~~ ✅
-3. import 多文件 / register 目录级联合生成
+3. ~~import 多文件 / register 目录级联合生成~~ ✅（单 proto  invocation 自动 emit 依赖）
 4. verify-plugin 接入 sync_demo + CI（demo_event）
 5. stale 清理 + Python/Godot roundtrip 测试
 6. MOBA proto 起草 → 按需 map / oneof

@@ -3,7 +3,7 @@
 #include "beast/platform/core/config/server_config.hpp"
 #include "beast/platform/net/dispatch/router.hpp"
 #include "beast/platform/net/io/io_context_runner.hpp"
-#include "beast/platform/net/listener/tcp_listener.hpp"
+#include "beast/platform/net/listener/udp_listener.hpp"
 #include "beast/platform/net/outbound/outbound_hub.hpp"
 #include "beast/platform/net/session/session_manager.hpp"
 
@@ -12,18 +12,26 @@
 
 namespace beast::platform::net::server {
 
-class TcpServer {
+/**
+ * KcpServer：KCP/UDP 接入服务器，结构与 TcpServer 对齐。
+ *
+ * 与 TcpServer 的差异：
+ *   - UdpListener 单 socket 复用，按远端 endpoint demux
+ *   - 每个 peer 新建独立 KcpTransport（绑定本地临时端口 + set_remote_endpoint）
+ *   - 通过 SessionManager::on_new_connection(IChannel) 接入，复用 auth/pipeline 流程
+ *
+ * 预热阶段：auth/auth_verifier 与 TcpServer 共用配置；KCP 鉴权超时复用 AuthConfig。
+ */
+class KcpServer {
 public:
-    TcpServer(
-        core::config::TcpConfig tcp_config,
+    KcpServer(
+        core::config::KcpConfig kcp_config = {},
         core::config::AuthConfig auth_config = {});
 
-    /// 注入构造：GameServer 共享 SessionManager/Router/OutboundHub 时使用。
-    /// ioc 必须由调用方（GameServer）持有，本类仅引用，不负责 thread 生命周期。
-    /// 调用方负责在 start() 前 run ioc，在 stop() 后停 ioc。
-    TcpServer(
-        core::config::TcpConfig tcp_config,
-        core::config::AuthConfig auth_config,
+    /// 注入构造：与 TcpServer 共享 SessionManager/Router/OutboundHub。
+    /// ioc 由 GameServer 提供（与 TcpServer 同一 io_context）。
+    KcpServer(
+        core::config::KcpConfig kcp_config,
         boost::asio::io_context& ioc,
         std::shared_ptr<dispatch::Router> router,
         std::shared_ptr<session::SessionManager> session_manager,
@@ -41,15 +49,16 @@ public:
     void stop();
 
 private:
-    core::config::TcpConfig config_;
+    void on_new_peer(const boost::asio::ip::udp::endpoint& peer, std::vector<std::uint8_t>&& first_packet);
+
+    core::config::KcpConfig config_;
     core::config::AuthConfig auth_config_;
-    /// 自有模式：own_io_runner_ 持有；注入模式：nullptr，使用 external_ioc_。
     std::unique_ptr<io::IoContextRunner> own_io_runner_;
     boost::asio::io_context* external_ioc_{nullptr};
     std::shared_ptr<dispatch::Router> router_;
     std::shared_ptr<session::SessionManager> session_manager_;
     std::shared_ptr<outbound::OutboundHub> outbound_hub_;
-    std::unique_ptr<listener::TcpListener> listener_;
+    std::unique_ptr<listener::UdpListener> listener_;
 };
 
 } // namespace beast::platform::net::server

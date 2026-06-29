@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.hero_profiles;
+option go_package = "beast.biz.moba.pixel_moba.hero_profiles";
+
+message HeroProfilesRowServer {
+    uint32 id = 1;
+    string index = 2;
+    string name = 3;
+    int32 max_hp = 4;
+    int32 attack = 5;
+}
+
+message HeroProfilesServerConfig {
+    repeated HeroProfilesRowServer rows = 1;
+}
+
+message HeroProfilesRowClient {
+    uint32 id = 1;
+    string index = 2;
+    string name = 3;
+    int32 max_hp = 4;
+    int32 attack = 5;
+}
+
+message HeroProfilesClientConfig {
+    repeated HeroProfilesRowClient rows = 1;
+}

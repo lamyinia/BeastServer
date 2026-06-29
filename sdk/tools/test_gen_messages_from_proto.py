@@ -193,6 +193,71 @@ message Table {
             self.assertIn("var sub: BeastRow = BeastRow.from_bytes(chunk.value)", gd)
             self.assertIn("static func from_bytes(data: PackedByteArray) -> BeastTable:", gd)
 
+    def test_cross_file_import(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            common_dir = root / "game" / "moba" / "common"
+            moba_dir = root / "game" / "moba" / "pixel_moba"
+            common_dir.mkdir(parents=True)
+            moba_dir.mkdir(parents=True)
+
+            types_proto = common_dir / "types.proto"
+            types_proto.write_text(
+                """
+syntax = "proto3";
+package beast.moba.common;
+
+message Vec2 {
+  float x = 1;
+  float y = 2;
+}
+""",
+                encoding="utf-8",
+            )
+            move_proto = moba_dir / "move.proto"
+            move_proto.write_text(
+                """
+syntax = "proto3";
+package beast.moba;
+
+import "game/moba/common/types.proto";
+
+message MoveCmd {
+  beast.moba.common.Vec2 dir = 1;
+  repeated int32 path = 2;
+}
+""",
+                encoding="utf-8",
+            )
+
+            parsed = parse_proto_messages(
+                move_proto, protoc=self.protoc, include_paths=[root], emit_imports=True
+            )
+            names = {m.name for m in parsed.messages}
+            self.assertEqual(names, {"Vec2", "MoveCmd"})
+
+            move = next(m for m in parsed.messages if m.name == "MoveCmd")
+            self.assertEqual(move.fields[0].message_class, "BeastVec2")
+            self.assertEqual(move.fields[0].kind, "message")
+            self.assertTrue(move.fields[1].packed)
+
+            vec2 = next(m for m in parsed.messages if m.name == "Vec2")
+            self.assertEqual(vec2.source_file, "game/moba/common/types.proto")
+            self.assertEqual(move.source_file, "game/moba/pixel_moba/move.proto")
+
+            gd = emit_message_gdscript(
+                move,
+                proto_path=move_proto,
+                wire_codec_preload="res://beast_sdk/impl/codec/wire_codec.gd",
+                load_res="res://infra/generated/pixel_moba/move_cmd.gd",
+            )
+            self.assertIn("BeastVec2.from_bytes", gd)
+
+            only_target = parse_proto_messages(
+                move_proto, protoc=self.protoc, include_paths=[root], emit_imports=False
+            )
+            self.assertEqual([m.name for m in only_target.messages], ["MoveCmd"])
+
 
 if __name__ == "__main__":
     unittest.main()

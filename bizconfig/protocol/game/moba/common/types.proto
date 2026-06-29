@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package beast.moba.common;
+
+// MOBA 共享类型（可被 pixel_moba 等玩法 proto import）
+
+message Vec2 {
+  float x = 1;
+  float y = 2;
+}
+
+message Vec2i {
+  sint32 x = 1;
+  sint32 y = 2;
+}

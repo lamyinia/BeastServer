@@ -70,11 +70,27 @@ public:
     [[nodiscard]] InstanceId instance_id_for(const PlayerId& player_id) const;
 
     // 局内事件投递：只读连接 ctx 缓存（auth 时已从 Registry 同步到 Session + pipeline）。
+    // 注意：本方法不依赖 ServerContext 其余成员，仅用 instance_manager_，
+    // 故路由 handler 应捕获 instance_manager_ 原始指针后转调静态重载，
+    // 避免 ServerContext 作为局部对象析构后留下悬空引用。
     bool submit_instance_event(
         net::channel::ChannelHandlerContext& ch_ctx,
         const net::channel::MessagePtr& msg,
         RouteId engine_route,
         std::vector<std::uint8_t> payload);
+
+    // 静态重载：供路由 handler 长期持有 instance_manager 原始指针后调用，
+    // 避免捕获短生命周期的 ServerContext 引用。
+    static bool submit_instance_event(
+        engine::instance::InstanceManager* instance_manager,
+        net::channel::ChannelHandlerContext& ch_ctx,
+        const net::channel::MessagePtr& msg,
+        RouteId engine_route,
+        std::vector<std::uint8_t> payload);
+
+    [[nodiscard]] engine::instance::InstanceManager* instance_manager_ptr() const noexcept {
+        return instance_manager_;
+    }
 
 private:
     PluginName plugin_name_;

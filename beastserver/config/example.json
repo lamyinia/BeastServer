@@ -9,6 +9,18 @@
         "max_frame_bytes": 65536,
         "idle_timeout_seconds": 60,
         "io_thread_count": 4
+      },
+      "kcp": {
+        "port": 0,
+        "max_frame_bytes": 65536,
+        "io_thread_count": 2,
+        "conv": 0,
+        "snd_wnd": 32,
+        "rcv_wnd": 32,
+        "nodelay": 1,
+        "interval": 10,
+        "resend": 2,
+        "nc": 1
       }
     },
     "log": {

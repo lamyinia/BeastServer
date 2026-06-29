@@ -35,8 +35,8 @@ void DemoEventEngine::on_start(beast::platform::engine::context::EngineContext& 
 
 void DemoEventEngine::on_event(const beast::platform::engine::instance::InstanceEvent& event) {
     BEAST_ENGINE_EVENT_SWITCH(event)
-        // 1) 仅 payload，不关心发送者、不回包
-        BEAST_ENGINE_EVENT_PROTO_REQ_THIS("ping1", beast::demo::PingRequest1, on_ping_1)
+        // 1) player_id + payload，按玩家回包（ping1 → pong1）
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("ping1", beast::demo::PingRequest1, on_ping_1)
         // 2) player_id + payload，按玩家回包
         BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("ping2", beast::demo::PingRequest2, on_ping_2)
         // 3) 完整 InstanceEvent + payload，可用 client_seq 等信封字段
@@ -47,12 +47,15 @@ void DemoEventEngine::on_event(const beast::platform::engine::instance::Instance
     BEAST_ENGINE_EVENT_SWITCH_END
 }
 
-void DemoEventEngine::on_ping_1(const beast::demo::PingRequest1& request) {
+void DemoEventEngine::on_ping_1(
+    const beast::platform::PlayerId& player_id,
+    const beast::demo::PingRequest1& request) {
     ++ping1_count_;
     BEAST_LOG_INFO(
-        "demo_event ping1(req-only) count={} text={}",
+        "demo_event ping1 count={} text={}",
         ping1_count_,
         request.text());
+    send_pong<beast::demo::PingPush1>(ctx_, player_id, "demo.event.pong1", "pong1", request.text());
 }
 
 void DemoEventEngine::on_ping_2(

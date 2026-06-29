@@ -1,6 +1,20 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(beastserver LANGUAGES CXX)
+# 拒绝 in-source build：CMAKE_BINARY_DIR 与 CMAKE_SOURCE_DIR 相同时，
+# CMake 会把所有构建产物（CMakeFiles/、*.o、*.so、Makefile 等）散落到源码树，
+# 既污染版本控制又占用磁盘（插件 .so 单个可达 100MB+）。
+# 根因常为 IDE 把 build path 配成源码目录本身。请改用独立 build 目录
+# （如 build/、cmake-build-debug/），再重新 configure。
+if(CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
+    message(FATAL_ERROR
+        "In-source build detected: CMAKE_BINARY_DIR == CMAKE_SOURCE_DIR (${CMAKE_SOURCE_DIR}).\n"
+        "This pollutes the source tree with build artifacts.\n"
+        "Fix: set the build directory to a subfolder (e.g. 'build/' or 'cmake-build-debug/') "
+        "in CLion: Settings -> Build, Execution, Deployment -> CMake -> Build path,\n"
+        "or run cmake with -B <build_dir> from CLI. Then reconfigure.")
+endif()
+
+project(beastserver LANGUAGES C CXX)
 
 include(${CMAKE_SOURCE_DIR}/cmake/BeastPaths.cmake)
 
@@ -30,6 +44,7 @@ enable_testing()
 
 include(${CMAKE_SOURCE_DIR}/cmake/ConanDeps.cmake)
 find_package(Protobuf CONFIG REQUIRED)
+find_package(GTest REQUIRED)
 beast_configure_conan_protoc()
 beast_find_conan_grpc()
 
@@ -46,3 +61,23 @@ if(_beast_plugin_targets)
     add_dependencies(beastserver ${_beast_plugin_targets})
 endif()
 target_compile_definitions(beast_core PRIVATE BEASTSERVER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+# 验收点 9：grpcurl CreateRoom(demo_event, 42, test-room-001) 后 KCP 客户端发 ping1 收 pong1。
+# 定义在 plugins 之后，以便 if(TARGET beast_plugin_demo_event) 为真并 link 其 proto target。
+add_executable(beast_server_demo_event_room_integration_test
+    ${CMAKE_SOURCE_DIR}/platform/server/tests/demo_event_room_integration_test.cpp)
+target_link_libraries(beast_server_demo_event_room_integration_test PRIVATE
+    beast::server
+    beast::net
+    beast::net_proto
+    beast::kcp
+    GTest::gtest_main)
+if(TARGET beast_plugin_demo_event)
+    add_dependencies(beast_server_demo_event_room_integration_test beast_plugin_demo_event)
+    target_link_libraries(beast_server_demo_event_room_integration_test PRIVATE beast_plugin_demo_event_proto)
+    target_include_directories(beast_server_demo_event_room_integration_test PRIVATE
+        "${CMAKE_BINARY_DIR}/plugins/game/example/demo_event/generated")
+endif()
+target_compile_definitions(beast_server_demo_event_room_integration_test PRIVATE
+    BEASTSERVER_BINARY_DIR="${CMAKE_BINARY_DIR}")
+add_test(NAME beast_server_demo_event_room_integration_test COMMAND beast_server_demo_event_room_integration_test)
