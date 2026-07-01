@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.map_lane;
+option go_package = "beast.biz.moba.pixel_moba.map_lane";
+
+message MapLaneRowServer {
+    uint32 arena_id = 1;
+    string lane_id = 2;
+    string rect = 3;
+    string path = 4;
+}
+
+message MapLaneServerConfig {
+    repeated MapLaneRowServer rows = 1;
+}
+
+message MapLaneRowClient {
+    uint32 arena_id = 1;
+    string lane_id = 2;
+    string rect = 3;
+    string path = 4;
+}
+
+message MapLaneClientConfig {
+    repeated MapLaneRowClient rows = 1;
+}

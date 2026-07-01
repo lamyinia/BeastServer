@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.effect;
+option go_package = "beast.biz.moba.pixel_moba.effect";
+
+message EffectRowServer {
+    uint32 id = 1;
+    string name = 2;
+    string effect_type = 3;
+    string formula = 4;
+    string target_type = 5;
+    string element = 6;
+    int32 stack_max = 7;
+    bool dispellable = 8;
+}
+
+message EffectServerConfig {
+    repeated EffectRowServer rows = 1;
+}
+
+message EffectRowClient {
+    uint32 id = 1;
+    string name = 2;
+}
+
+message EffectClientConfig {
+    repeated EffectRowClient rows = 1;
+}

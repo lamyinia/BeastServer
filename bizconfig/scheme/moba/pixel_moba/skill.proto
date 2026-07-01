@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.skill;
+option go_package = "beast.biz.moba.pixel_moba.skill";
+
+message SkillRowServer {
+    uint32 id = 1;
+    string index = 2;
+    string name = 3;
+    string skill_type = 4;
+    string cast_type = 5;
+    string damage_type = 6;
+    int32 max_level = 7;
+    string default_effect_ids = 8;
+    string mana_type = 9;
+}
+
+message SkillServerConfig {
+    repeated SkillRowServer rows = 1;
+}
+
+message SkillRowClient {
+    uint32 id = 1;
+    string index = 2;
+    string name = 3;
+    string skill_type = 4;
+    string cast_type = 5;
+    string damage_type = 6;
+    int32 max_level = 7;
+    string client_icon_path = 8;
+    string desc = 9;
+    string mana_type = 10;
+}
+
+message SkillClientConfig {
+    repeated SkillRowClient rows = 1;
+}

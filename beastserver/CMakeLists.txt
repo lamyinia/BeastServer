@@ -62,7 +62,6 @@ if(_beast_plugin_targets)
 endif()
 target_compile_definitions(beast_core PRIVATE BEASTSERVER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
-# 验收点 9：grpcurl CreateRoom(demo_event, 42, test-room-001) 后 KCP 客户端发 ping1 收 pong1。
 # 定义在 plugins 之后，以便 if(TARGET beast_plugin_demo_event) 为真并 link 其 proto target。
 add_executable(beast_server_demo_event_room_integration_test
     ${CMAKE_SOURCE_DIR}/platform/server/tests/demo_event_room_integration_test.cpp)

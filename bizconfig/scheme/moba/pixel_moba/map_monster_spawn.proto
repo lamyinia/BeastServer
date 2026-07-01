@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.map_monster_spawn;
+option go_package = "beast.biz.moba.pixel_moba.map_monster_spawn";
+
+message MapMonsterSpawnRowServer {
+    uint32 arena_id = 1;
+    string spawn_id = 2;
+    string type = 3;
+    string rect = 4;
+}
+
+message MapMonsterSpawnServerConfig {
+    repeated MapMonsterSpawnRowServer rows = 1;
+}
+
+message MapMonsterSpawnRowClient {
+    uint32 arena_id = 1;
+    string spawn_id = 2;
+    string type = 3;
+    string rect = 4;
+}
+
+message MapMonsterSpawnClientConfig {
+    repeated MapMonsterSpawnRowClient rows = 1;
+}

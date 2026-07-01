@@ -10,6 +10,8 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
+const HeaderRows = 5
+
 func ScanExcelFiles(root string) ([]string, error) {
 	var files []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
@@ -41,18 +43,18 @@ func ProcessWorkbook(rawRoot, xlsxPath string) ([]model.SheetResult, error) {
 	var results []model.SheetResult
 	for _, sheetName := range book.GetSheetList() {
 		rows, err := book.GetRows(sheetName)
-		if err != nil || len(rows) < 3 {
+		if err != nil || len(rows) < HeaderRows {
 			continue
 		}
 
-		fields := parseHeaders(rows[0], rows[1])
+		fields := parseHeaders(rows[0], rows[1], rows[2], rows[3])
 		if len(fields) == 0 {
 			continue
 		}
 
 		logicalName, msgName, protoRelDir := model.BuildLogicalName(rawRoot, xlsxPath, sheetName)
 		var dataRows [][]string
-		for i := 3; i < len(rows); i++ {
+		for i := HeaderRows; i < len(rows); i++ {
 			if isEmptyRow(rows[i]) {
 				continue
 			}
@@ -77,32 +79,32 @@ func ProcessWorkbook(rawRoot, xlsxPath string) ([]model.SheetResult, error) {
 	return results, nil
 }
 
-func parseHeaders(row1, row2 []string) []model.FieldInfo {
+func parseHeaders(nameRow, typeRow, constraintRow, visibilityRow []string) []model.FieldInfo {
 	var fields []model.FieldInfo
-	for i, cell1 := range row1 {
-		cell1 = strings.TrimSpace(cell1)
-		if cell1 == "" {
+	for i, nameCell := range nameRow {
+		name := strings.TrimSpace(nameCell)
+		if name == "" {
 			continue
 		}
 
-		start := strings.Index(cell1, "(")
-		end := strings.Index(cell1, ")")
-		if start == -1 || end == -1 || end <= start {
+		protoType := ""
+		if i < len(typeRow) {
+			protoType = strings.TrimSpace(typeRow[i])
+		}
+		if protoType == "" {
 			continue
 		}
 
-		name := strings.TrimSpace(cell1[:start])
-		protoType := strings.TrimSpace(cell1[start+1 : end])
-		if name == "" || protoType == "" {
-			continue
+		constraint := ""
+		if i < len(constraintRow) {
+			constraint = strings.TrimSpace(constraintRow[i])
 		}
 
-		cell2 := ""
-		if i < len(row2) {
-			cell2 = strings.TrimSpace(row2[i])
+		visibility := ""
+		if i < len(visibilityRow) {
+			visibility = strings.TrimSpace(visibilityRow[i])
 		}
 
-		constraint, visibility := splitConstraintVisibility(cell2)
 		visibleS, visibleC, skip := parseVisibility(visibility)
 		if skip || (!visibleS && !visibleC) {
 			continue
@@ -118,16 +120,6 @@ func parseHeaders(row1, row2 []string) []model.FieldInfo {
 		})
 	}
 	return fields
-}
-
-func splitConstraintVisibility(cell2 string) (string, string) {
-	parts := strings.SplitN(cell2, "/", 2)
-	constraint := strings.TrimSpace(parts[0])
-	visibility := ""
-	if len(parts) == 2 {
-		visibility = strings.TrimSpace(parts[1])
-	}
-	return constraint, visibility
 }
 
 func parseVisibility(visibility string) (visibleS, visibleC, skip bool) {

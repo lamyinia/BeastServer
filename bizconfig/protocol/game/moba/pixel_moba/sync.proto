@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package beast.moba.pixel;
+
+import "types.proto";
+
+// 分层同步协议:按变更频率解耦,降低带宽。
+//
+// Tier 1 — 高频快照(每 tick 60Hz,AOI 视野裁剪):渲染必需的最小集
+//   TransformSync   移动 actor(英雄/小兵/野怪)的 pos/vel/hp/mana/state/anim
+//   ProjectileSync  飞行物(含 pos,单独一路)
+//
+// Tier 2 — 事件驱动(属性/buff/技能变更时发,广播全玩家,发后清 dirty)
+//   AttrSync        英雄战斗属性(max_hp/mana上限/level/gold/exp/攻防/暴击...)
+//   BuffSync        英雄 buff 列表(全量覆盖)
+//   SkillSlotSync   技能槽 skill_id/level(CD 客户端自行倒计时)
+//
+// Tier 3 — 静态/低频(开局发一次 + 状态变更时发)
+//   TowerStateSync  塔(team/lane/tier/hp/pos),摧毁时重发
+//   MonsterCampSync 野怪营(camp_id/respawn_tick),死亡/刷新时重发
+//
+// 设计要点:
+//   - HP/mana 放 Tier1(高频):HP 变化需即时反馈,mana regen 连续,均需权威值;重连安全
+//   - 战斗属性放 Tier2(事件驱动):只在买装备/升技能/buff 增删时变,90%+ tick 无变化
+//   - 视野不单独成消息:AOI 裁剪是 Tier1 服务端逻辑,客户端只接收"已裁剪后的可见单位"
+//   - 装备复用 EquipChangeNotify(economy.proto),不在 sync 重复
+
+// ===== Tier 1 =====
+
+// route:TransformSync|s2c|pixelmoba.transform
+message TransformSync {
+  uint32 tick = 1;
+  repeated TransformEntry actors = 2;               // 英雄/小兵/野怪(移动 actor),不含塔/飞行物
+}
+
+message TransformEntry {
+  uint32 entity_id = 1;
+  uint32 team = 2;                                  // 客户端渲染颜色/敌我判定
+  beast.moba.common.Vec2 pos = 3;
+  beast.moba.common.Vec2 vel = 4;
+  int32 hp = 5;
+  int32 mana = 6;                                   // 仅英雄有,非英雄 0(proto3 默认不序列化)
+  uint32 state_flags = 7;
+  uint32 target_entity_id = 8;
+  AnimationState animation = 9;                     // 非idle时填,idle不填(proto3 默认不序列化)
+}
+
+// 非空闲动画状态(仅 animate_id != 0 时下发;idle/平A/run 由客户端自行处理)。
+// 客户端据 anim_start_tick + anim_duration_ms 算进度,到期回 idle。
+message AnimationState {
+  uint32 animate_id = 1;        // 0 = idle(不发);技能用 skill_level.animate_id;死亡用 kDeathAnimId 约定值
+  uint32 anim_start_tick = 2;   // 起始 tick
+  uint32 anim_duration_ms = 3;  // 0 = 循环(如死亡躺地,复活时由服务端清回 idle);>0 = 一次性
+}
+
+// route:ProjectileSync|s2c|pixelmoba.projectile
+message ProjectileSync {
+  uint32 tick = 1;
+  repeated ProjectileEntry projectiles = 2;
+}
+
+message ProjectileEntry {
+  uint32 entity_id = 1;
+  beast.moba.common.Vec2 pos = 2;
+  uint32 caster_entity_id = 3;
+  uint32 skill_id = 4;
+  uint32 target_entity_id = 5;
+  int32 damage = 6;
+  uint32 damage_type = 7;                           // 0 physical / 1 magical / 2 true
+  float speed = 8;
+  bool is_homing = 9;
+}
+
+// ===== Tier 2 =====
+
+// route:AttrSync|s2c|pixelmoba.attr
+message AttrSync {
+  uint32 entity_id = 1;
+  int32 max_hp = 2;
+  int32 max_mana = 3;
+  uint32 level = 4;
+  int32 gold = 5;
+  int32 exp = 6;
+  int32 physical_attack = 7;
+  int32 magic_attack = 8;
+  int32 physical_defense = 9;
+  int32 magic_defense = 10;
+  float move_speed = 11;
+  float attack_range = 12;
+  float crit_rate = 13;
+  float crit_damage = 14;
+  float cd_reduction = 15;
+}
+
+// route:BuffSync|s2c|pixelmoba.buff
+message BuffSync {
+  uint32 entity_id = 1;
+  repeated BuffEntry buffs = 2;                     // 全量覆盖,客户端清空旧列表后填入
+}
+
+message BuffEntry {
+  uint32 effect_id = 1;                             // 外键 → effect 配表(客户端查图标/描述)
+  uint32 expire_tick = 2;                           // 0 = 永久(由施加方移除)
+  uint32 stacks = 3;
+  uint32 buff_flags = 4;                            // 该 buff 贡献的 flag 位(stun/slow/...)
+}
+
+// 技能槽状态(仅 skill_id/level;CD 由客户端据 CastNotify 自行倒计时)
+message SkillSlotState {
+  uint32 skill_id = 1;
+  uint32 level = 2;
+}
+
+// route:SkillSlotSync|s2c|pixelmoba.skillslot
+message SkillSlotSync {
+  uint32 entity_id = 1;
+  repeated SkillSlotState skills = 2;
+}
+
+// ===== Tier 3 =====
+
+// route:TowerStateSync|s2c|pixelmoba.tower
+message TowerStateSync {
+  uint32 entity_id = 1;
+  uint32 team = 2;
+  uint32 lane = 3;                                  // 0 top / 1 mid / 2 bot / 3 base
+  uint32 tier = 4;                                  // 0 外塔 / 1 内塔 / 2 水晶
+  int32 hp = 5;
+  int32 max_hp = 6;
+  uint32 state_flags = 7;                           // bit0 alive / bit8 destroyed
+  beast.moba.common.Vec2 pos = 8;
+}
+
+// route:MonsterCampSync|s2c|pixelmoba.monstercamp
+message MonsterCampSync {
+  uint32 entity_id = 1;
+  uint32 camp_id = 2;
+  uint32 respawn_tick = 3;                          // 0 = 存活中,>0 = 死亡待复活(客户端可显示刷新倒计时)
+  uint32 state_flags = 4;                           // bit0 alive / bit8 dead
+}
+
+// ===== 持续伤害区域(法师地面 AOE)=====
+
+// route:FieldSpawnNotify|s2c|pixelmoba.fieldspawn
+// 创建时广播一次(事件驱动,不走 dirty)。客户端据 skill_id 查表渲染区域特效,
+// 据 expire_tick 倒计时消失。区域位置静态,无需每 tick 同步。
+message FieldSpawnNotify {
+  uint32 entity_id = 1;
+  uint32 caster_entity_id = 2;
+  uint32 skill_id = 3;
+  beast.moba.common.Vec2 center = 4;
+  float radius = 5;                                 // circle/sector 半径(rect 时为 0)
+  uint32 expire_tick = 6;
+  uint32 damage_type = 7;                           // 0 physical / 1 magical / 2 true(客户端飘字颜色)
+  uint32 shape_type = 8;                            // 0 circle / 1 sector / 2 rect(默认 0 圆形)
+  float angle_deg = 9;                              // sector 半角(度)
+  float length = 10;                                // rect 沿朝向长度
+  float width = 11;                                 // rect 垂直朝向宽度
+  beast.moba.common.Vec2 facing = 12;               // sector/rect 朝向(归一化)
+}
+
+// route:FieldRemoveNotify|s2c|pixelmoba.fieldremove
+// 区域到期销毁时广播。客户端移除区域特效。
+message FieldRemoveNotify {
+  uint32 entity_id = 1;
+}

@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package beast.moba.pixel;
+
+// 客户端请求 ping(用于 RTT 估算 + tick 序号同步)
+// 客户端定期(如 1Hz)发送,记录发送时本地时间戳
+// route:PingCmd|c2s|pixelmoba.ping
+message PingCmd {
+  uint32 client_ts = 1;                            // 客户端发送时的时间戳(ms)
+}
+
+// 服务端响应 ping(回显 client_ts + 服务端当前 tick)
+// 客户端收到后:
+//   - RTT = now - client_ts
+//   - 服务端 tick 同步:已知 server_tick + RTT/2,可估算服务端当前 tick
+//   - 用于调整插值缓冲:插值时间 = 服务端推送到接收延迟 + RTT/2
+// route:PongNotify|s2c|pixelmoba.pong
+message PongNotify {
+  uint32 client_ts = 1;                            // 回显客户端 ts
+  uint32 server_ts = 2;                            // 服务端收到时的 ts(ms)
+  uint32 tick = 3;                                  // 服务端当前 tick 序号
+}

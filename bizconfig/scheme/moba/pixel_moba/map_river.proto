@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.map_river;
+option go_package = "beast.biz.moba.pixel_moba.map_river";
+
+message MapRiverRowServer {
+    uint32 arena_id = 1;
+    string rect = 2;
+}
+
+message MapRiverServerConfig {
+    repeated MapRiverRowServer rows = 1;
+}
+
+message MapRiverRowClient {
+    uint32 arena_id = 1;
+    string rect = 2;
+}
+
+message MapRiverClientConfig {
+    repeated MapRiverRowClient rows = 1;
+}

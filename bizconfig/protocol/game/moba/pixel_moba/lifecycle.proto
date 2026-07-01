@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package beast.moba.pixel;
+
+import "types.proto";
+
+// 服务端广播:死亡
+// route:DeathNotify|s2c|pixelmoba.death
+message DeathNotify {
+  uint32 tick = 1;
+  uint32 victim_entity_id = 2;
+  uint32 killer_entity_id = 3;                     // 0 = 中立/塔/野怪/未知
+  int32 killer_gold_gain = 4;                      // 击杀者获得金币(飘字)
+  int32 killer_exp_gain = 5;
+  uint32 respawn_tick = 6;                          // 复活时间(tick 序号)
+  repeated uint32 assist_entity_ids = 7;           // 助攻者 entity_id 列表
+}
+
+// 服务端广播:复活
+// route:RespawnNotify|s2c|pixelmoba.respawn
+message RespawnNotify {
+  uint32 entity_id = 1;
+  beast.moba.common.Vec2 spawn_pos = 2;             // 复活位置(基地 spawn 点)
+  int32 hp_after = 3;
+  int32 mana_after = 4;
+}
+
+// 客户端→服务端:断线重连后首发,请求全量快照
+// route:ReconnectCmd|c2s|pixelmoba.reconnect
+message ReconnectCmd {
+  uint32 client_ts = 1;                             // 客户端时间戳(测 RTT,可选)
+}
+
+// 服务端→单播:重连确认 + 局信息。随后服务端再逐条单播各 Tier 全量消息
+// route:ReconnectAck|s2c|pixelmoba.reconnectack
+message ReconnectAck {
+  uint32 tick = 1;                                  // 当前服务端 tick(客户端对齐 tick 时钟)
+  uint32 match_id = 2;                              // 对局 ID(确认回到正确对局)
+  uint32 self_entity_id = 3;                        // 玩家自身英雄实体 ID(0=尚未选英雄)
+  bool match_started = 4;                           // 对局是否已开始
+  bool match_ended = 5;                             // 对局是否已结束
+}

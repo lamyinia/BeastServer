@@ -39,7 +39,7 @@ func Sheet(sheet model.SheetResult) []Error {
 	}
 
 	for rowIdx, row := range sheet.DataRows {
-		excelRow := rowIdx + 4
+		excelRow := rowIdx + excel.HeaderRows + 1
 		for _, field := range sheet.Fields {
 			value := excel.CellValue(row, field.ColIndex)
 			if strings.Contains(field.Constraint, "notnull") && strings.TrimSpace(value) == "" {

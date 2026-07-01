@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package beast.moba.pixel;
+
+import "types.proto";
+
+// ===== 选英雄阶段 =====
+
+// 客户端请求选择英雄
+// route:HeroSelectCmd|c2s|pixelmoba.heroselect
+message HeroSelectCmd {
+  uint32 hero_id = 1;                              // 外键 → unit.id
+}
+
+// 服务端广播:某玩家选择了英雄(选人界面显示)
+// route:HeroSelectNotify|s2c|pixelmoba.heroselectnotify
+message HeroSelectNotify {
+  uint32 player_id = 1;
+  uint32 hero_id = 2;
+}
+
+// ===== 对局开始 =====
+
+// 服务端广播:对局开始(选人阶段全部就绪后触发)
+// route:MatchStartNotify|s2c|pixelmoba.start
+message MatchStartNotify {
+  uint32 match_id = 1;
+  uint32 map_id = 2;                                // 外键 → map_list.id
+  repeated MatchPlayer players = 3;
+  uint32 start_tick = 4;                            // 对局开始的 tick(用于客户端算时间)
+}
+
+message MatchPlayer {
+  uint32 player_id = 1;                            // 平台玩家ID
+  uint32 entity_id = 2;                            // 服务端分配的本局实体ID
+  uint32 hero_id = 3;                              // 外键 → unit.id
+  uint32 team = 4;                                 // 1 blue / 2 red
+  beast.moba.common.Vec2 spawn_pos = 5;
+}
+
+// 客户端通知:加载完成(等所有玩家 ready 后再 start)
+// route:LoadCompleteCmd|c2s|pixelmoba.loadcomplete
+message LoadCompleteCmd {
+  uint32 match_id = 1;
+}
+
+// ===== 对局结束 =====
+
+// 服务端广播:对局结束
+// route:MatchEndNotify|s2c|pixelmoba.end
+message MatchEndNotify {
+  uint32 winner_team = 1;                          // 0 draw / 1 blue / 2 red
+  uint32 duration_sec = 2;
+  repeated MatchPlayerResult results = 3;
+}
+
+message MatchPlayerResult {
+  uint32 player_id = 1;
+  uint32 kills = 2;
+  uint32 deaths = 3;
+  uint32 assists = 4;
+  int32 gold_earned = 5;
+}

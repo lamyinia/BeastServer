@@ -2,10 +2,10 @@ syntax = "proto3";
 
 package beast.moba.pixel;
 
-import "game/moba/common/types.proto";
+import "types.proto";
 
-// route:MoveCmd|c2s|pixel_moba.move|move
+// route:MoveCmd|c2s|pixelmoba.move
 message MoveCmd {
-  beast.moba.common.Vec2 dir = 1;
-  repeated int32 path = 2;
+  beast.moba.common.Vec2 dir = 1;                    // 当前朝向(单位向量,0,0 表示停止)
+  repeated beast.moba.common.Vec2i path = 2;         // 目标路径点(像素坐标,空表示原地停止)
 }

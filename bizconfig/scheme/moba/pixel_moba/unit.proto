@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.unit;
+option go_package = "beast.biz.moba.pixel_moba.unit";
+
+message UnitRowServer {
+    uint32 id = 1;
+    string index = 2;
+    string name = 3;
+    string unit_type = 4;
+    bool is_neutral = 5;
+    int32 spawn_interval_ms = 6;
+    int32 death_reward_gold = 7;
+    int32 death_reward_exp = 8;
+    int32 max_hp = 9;
+    int32 max_mana = 10;
+    float hp_regen = 11;
+    float mana_regen = 12;
+    int32 physical_attack = 13;
+    int32 magic_attack = 14;
+    int32 physical_defense = 15;
+    int32 magic_defense = 16;
+    float attack_before = 17;
+    float attack_after = 18;
+    float attack_interval = 19;
+    float attack_range = 20;
+    float move_speed = 21;
+    float collision_radius = 22;
+    float vision_range = 23;
+    float physical_lifesteal = 24;
+    float magic_lifesteal = 25;
+    float crit_rate = 26;
+    float crit_damage = 27;
+    int32 physical_pen = 28;
+    float physical_pen_pct = 29;
+    int32 magic_pen = 30;
+    float magic_pen_pct = 31;
+    float cd_reduction = 32;
+    float dodge = 33;
+    float hit_rate = 34;
+    float slow_resist = 35;
+    float tenacity = 36;
+}
+
+message UnitServerConfig {
+    repeated UnitRowServer rows = 1;
+}
+
+message UnitRowClient {
+    uint32 id = 1;
+    string index = 2;
+    string name = 3;
+    string unit_type = 4;
+    int32 death_reward_gold = 5;
+    int32 death_reward_exp = 6;
+    string client_scene_path = 7;
+    string client_icon_path = 8;
+    int32 max_hp = 9;
+    int32 max_mana = 10;
+    float hp_regen = 11;
+    float mana_regen = 12;
+    int32 physical_attack = 13;
+    int32 magic_attack = 14;
+    int32 physical_defense = 15;
+    int32 magic_defense = 16;
+    float attack_before = 17;
+    float attack_after = 18;
+    float attack_interval = 19;
+    float attack_range = 20;
+    float move_speed = 21;
+    float collision_radius = 22;
+    float vision_range = 23;
+    float physical_lifesteal = 24;
+    float magic_lifesteal = 25;
+    float crit_rate = 26;
+    float crit_damage = 27;
+    int32 physical_pen = 28;
+    float physical_pen_pct = 29;
+    int32 magic_pen = 30;
+    float magic_pen_pct = 31;
+    float cd_reduction = 32;
+    float dodge = 33;
+    float hit_rate = 34;
+    float slow_resist = 35;
+    float tenacity = 36;
+}
+
+message UnitClientConfig {
+    repeated UnitRowClient rows = 1;
+}

@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.hero_level_bonus;
+option go_package = "beast.biz.moba.pixel_moba.hero_level_bonus";
+
+message HeroLevelBonusRowServer {
+    uint32 hero_id = 1;
+    int32 level = 2;
+    int32 skill_point = 3;
+    int32 exp_to_next = 4;
+    string unlock_slot = 5;
+    int32 max_hp = 6;
+    int32 max_mana = 7;
+    float hp_regen = 8;
+    float mana_regen = 9;
+    int32 physical_attack = 10;
+    int32 magic_attack = 11;
+    int32 physical_defense = 12;
+    int32 magic_defense = 13;
+    float attack_before = 14;
+    float attack_after = 15;
+    float attack_interval = 16;
+    float attack_range = 17;
+    float move_speed = 18;
+    float collision_radius = 19;
+    float vision_range = 20;
+    float physical_lifesteal = 21;
+    float magic_lifesteal = 22;
+    float crit_rate = 23;
+    float crit_damage = 24;
+    int32 physical_pen = 25;
+    float physical_pen_pct = 26;
+    int32 magic_pen = 27;
+    float magic_pen_pct = 28;
+    float cd_reduction = 29;
+    float dodge = 30;
+    float hit_rate = 31;
+    float slow_resist = 32;
+    float tenacity = 33;
+}
+
+message HeroLevelBonusServerConfig {
+    repeated HeroLevelBonusRowServer rows = 1;
+}
+
+message HeroLevelBonusRowClient {
+    uint32 hero_id = 1;
+    int32 level = 2;
+    int32 skill_point = 3;
+    int32 exp_to_next = 4;
+    string unlock_slot = 5;
+    int32 max_hp = 6;
+    int32 max_mana = 7;
+    float hp_regen = 8;
+    float mana_regen = 9;
+    int32 physical_attack = 10;
+    int32 magic_attack = 11;
+    int32 physical_defense = 12;
+    int32 magic_defense = 13;
+    float attack_before = 14;
+    float attack_after = 15;
+    float attack_interval = 16;
+    float attack_range = 17;
+    float move_speed = 18;
+    float collision_radius = 19;
+    float vision_range = 20;
+    float physical_lifesteal = 21;
+    float magic_lifesteal = 22;
+    float crit_rate = 23;
+    float crit_damage = 24;
+    int32 physical_pen = 25;
+    float physical_pen_pct = 26;
+    int32 magic_pen = 27;
+    float magic_pen_pct = 28;
+    float cd_reduction = 29;
+    float dodge = 30;
+    float hit_rate = 31;
+    float slow_resist = 32;
+    float tenacity = 33;
+}
+
+message HeroLevelBonusClientConfig {
+    repeated HeroLevelBonusRowClient rows = 1;
+}

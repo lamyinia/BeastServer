@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.map_arena;
+option go_package = "beast.biz.moba.pixel_moba.map_arena";
+
+message MapArenaRowServer {
+    uint32 id = 1;
+    string index = 2;
+    string name = 3;
+    int32 width = 4;
+    int32 height = 5;
+    int32 version = 6;
+}
+
+message MapArenaServerConfig {
+    repeated MapArenaRowServer rows = 1;
+}
+
+message MapArenaRowClient {
+    uint32 id = 1;
+    string index = 2;
+    string name = 3;
+    int32 width = 4;
+    int32 height = 5;
+    int32 version = 6;
+}
+
+message MapArenaClientConfig {
+    repeated MapArenaRowClient rows = 1;
+}

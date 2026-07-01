@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.map_bush;
+option go_package = "beast.biz.moba.pixel_moba.map_bush";
+
+message MapBushRowServer {
+    uint32 arena_id = 1;
+    string bush_index = 2;
+    string rect = 3;
+}
+
+message MapBushServerConfig {
+    repeated MapBushRowServer rows = 1;
+}
+
+message MapBushRowClient {
+    uint32 arena_id = 1;
+    string bush_index = 2;
+    string rect = 3;
+}
+
+message MapBushClientConfig {
+    repeated MapBushRowClient rows = 1;
+}

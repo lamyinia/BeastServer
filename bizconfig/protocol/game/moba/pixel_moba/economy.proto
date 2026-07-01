@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package beast.moba.pixel;
+
+// 客户端请求购买商品
+// route:BuyItemCmd|c2s|pixelmoba.buy
+message BuyItemCmd {
+  uint32 item_id = 1;                              // 外键 → item.id
+}
+
+// 服务端通知购买结果(仅给购买者)
+// route:BuyItemResult|s2c|pixelmoba.buyresult
+message BuyItemResult {
+  uint32 item_id = 1;
+  bool success = 2;
+  string error_msg = 3;                            // 失败原因:"gold_not_enough" / "not_in_base" / "inventory_full"
+}
+
+// 客户端请求出售装备(按折价退还金币)
+// route:SellItemCmd|c2s|pixelmoba.sell
+message SellItemCmd {
+  uint32 item_id = 1;                              // 要出售的装备 item_id
+}
+
+// 服务端通知出售结果(仅给出售者)
+// route:SellItemResult|s2c|pixelmoba.sellresult
+message SellItemResult {
+  uint32 item_id = 1;
+  bool success = 2;
+  int32 refund_gold = 3;                           // 退还金币数(失败=0)
+  string error_msg = 4;                            // "not_owned" / "unsalable"
+}
+
+// 服务端广播:装备变更(所有客户端,用于外观显示)
+// 全量推送当前装备列表,客户端覆盖式更新
+// route:EquipChangeNotify|s2c|pixelmoba.equipchange
+message EquipChangeNotify {
+  uint32 entity_id = 1;
+  repeated uint32 equipped_item_ids = 2;           // 当前装备的所有 item_id
+}
+
+// 服务端广播:升级
+// route:LevelUpNotify|s2c|pixelmoba.levelup
+message LevelUpNotify {
+  uint32 entity_id = 1;
+  uint32 new_level = 2;
+}
+
+// 客户端请求升级技能
+// route:LevelUpSkillCmd|c2s|pixelmoba.levelupskill
+message LevelUpSkillCmd {
+  uint32 skill_id = 1;
+}

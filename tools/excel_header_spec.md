@@ -11,36 +11,37 @@
 
 | 行号 | 用途 | 说明 |
 |------|------|------|
-| Row 1 | **字段名(类型)** | 导出工具按此映射 proto 字段。格式：`字段名(proto类型)`。必须与 proto 定义一致。 |
-| Row 2 | **约束/可见性** | 格式：`约束/可见性`。约束如 `notnull`, `optional`, `only`。可见性以 `!` 开头。不含中文注释。 |
-| Row 3 | **中文注释** | 仅供策划参考的中文说明，导出工具不解析。 |
-| Row 4+ | **数据** | 实际配置内容 |
+| Row 1 | **字段名** | 字段名，必须与 proto 定义一致 |
+| Row 2 | **proto 类型** | 如 `uint32`/`string`/`int32`/`float`/`bool` |
+| Row 3 | **约束** | `notnull`/`optional`/`only` 或组合 `notnull&only` |
+| Row 4 | **可见性** | `!s`/`!c`/`!a` 或组合 `!s!c`。留空默认 `!s!c` |
+| Row 5 | **中文注释** | 仅供策划参考，导出工具不解析 |
+| Row 6+ | **数据** | 实际配置内容 |
 
 ### 字段名后缀约定
 
 | 后缀/标记 | 含义 | 适用行 | 示例 |
 |------|------|--------|------|
-| `(type)` | 类型声明 | Row 1 | `id(uint32)`, `name(string)` |
-| `notnull` | 必填字段 | Row 2 约束 | `notnull` |
-| `optional` | 可选字段 | Row 2 约束 | `optional` |
-| `only` | 唯一性校验 | Row 2 约束 | `notnull&only` |
-| `!s` | 服务端可见 | Row 2 可见性 | `!s` |
-| `!c` | 客户端可见 | Row 2 可见性 | `!c` |
-| `!a` | 后台管理侧可见 | Row 2 可见性 | `!a` |
-| `!s!c` | 服务端+客户端均可见 | Row 2 可见性 | `!s!c` |
+| `notnull` | 必填字段 | Row 3 约束 | `notnull` |
+| `optional` | 可选字段 | Row 3 约束 | `optional` |
+| `only` | 唯一性校验 | Row 3 约束 | `notnull&only` |
+| `!s` | 服务端可见 | Row 4 可见性 | `!s` |
+| `!c` | 客户端可见 | Row 4 可见性 | `!c` |
+| `!a` | 后台管理侧可见 | Row 4 可见性 | `!a` |
+| `!s!c` | 服务端+客户端均可见 | Row 4 可见性 | `!s!c` |
 
-**Row 2 格式**：`约束/可见性`（不含中文注释，中文注释在 Row 3）
+**Row 3 + Row 4 格式**（约束与可见性分两行，不含中文注释，中文注释在 Row 5）
 
-| Row 2 示例 | 含义 |
-|-----------|------|
-| `notnull&only/!s!c` | 必填且唯一，服务端+客户端均可见 |
-| `notnull/!s!c` | 必填，服务端+客户端均可见 |
-| `notnull/!s` | 必填，仅服务端可见 |
-| `optional/!c` | 可选，仅客户端可见 |
-| `optional/!a` | 可选，仅后台可见 |
-| `notnull/!s` | 必填，仅服务端可见 |
+| Row 3 示例 | Row 4 示例 | 含义 |
+|-----------|-----------|------|
+| `notnull&only` | `!s!c` | 必填且唯一，服务端+客户端均可见 |
+| `notnull` | `!s!c` | 必填，服务端+客户端均可见 |
+| `notnull` | `!s` | 必填，仅服务端可见 |
+| `optional` | `!c` | 可选，仅客户端可见 |
+| `optional` | `!a` | 可选，仅后台可见 |
+| `notnull` | `!s` | 必填，仅服务端可见 |
 
-**可见性省略规则**：Row 2 不写可见性（即只有约束如 `notnull`）时，默认 `!s!c`（服务端+客户端共享）
+**可见性省略规则**：Row 4 留空（即只有约束如 `notnull` 在 Row 3，Row 4 不写）时，默认 `!s!c`（服务端+客户端共享）
 
 ### 通用数据格式
 
@@ -86,7 +87,7 @@
 
 ### 字段可见性与导出分份
 
-导出工具根据 Row 2 的可见性标记将字段分发到不同的 .pb 文件（Row 3 中文注释不参与导出）：
+导出工具根据 Row 4 的可见性标记将字段分发到不同的 .pb 文件（Row 5 中文注释不参与导出）：
 
 ```
 Excel → 导出工具 → 多份 .pb
@@ -114,19 +115,19 @@ Excel → 导出工具 → 多份 .pb
 
 ### 表头
 
-| 列号 | Row 1 (字段名) | Row 2 (约束/可见性) | Row 3 (中文注释) | 必填 | 类型 | 格式要求 |
-|------|---------------|---------------------|-------------------|------|------|---------|
-| A | id(uint32) | notnull&only/!s!c | 标识ID | ✅ | uint32 | 唯一数字标识，全表不可重复 |
-| B | index(string) | notnull&only/!s!c | 额外索引 | ✅ | string | 唯一字符串标识，如 `singer1` |
-| C | name(string) | notnull/!s!c | NPC名称 | ✅ | string | NPC 显示名称 |
-| D | personality(string) | notnull/!s!c | 性格标签 | ✅ | string | 用 `/` 分隔多个性格 |
-| E | background(string) | notnull/!s!c | 背景故事 | ✅ | string | 自由文本 |
-| F | speech_style(string) | notnull/!s!c | 说话风格 | ✅ | string | 用 `/` 分隔多个风格 |
-| G | default_model(string) | notnull/!s | 默认AI模型 | ✅ | string | 如 `doubao-seed-2-0-pro` |
-| H | dialogue_examples(string) | optional/!c | 对话示例 | ❌ | string | JSON 数组格式字符串 |
-| I | tools(string) | optional/!c | 可用工具列表 | ❌ | string | JSON 数组格式字符串 |
-| J | client_icon(string) | optional/!c | 客户端图标路径 | ❌ | string | 资源路径 |
-| K | internal_notes(string) | optional/!a | 内部备注 | ❌ | string | 内部说明 |
+| 列号 | Row 1 (字段名) | Row 2 (类型) | Row 3 (约束) | Row 4 (可见性) | Row 5 (中文注释) | 必填 | 类型 | 格式要求 |
+|------|---------------|-------------|-------------|----------------|-------------------|------|------|---------|
+| A | id | uint32 | notnull&only | !s!c | 标识ID | ✅ | uint32 | 唯一数字标识，全表不可重复 |
+| B | index | string | notnull&only | !s!c | 额外索引 | ✅ | string | 唯一字符串标识，如 `singer1` |
+| C | name | string | notnull | !s!c | NPC名称 | ✅ | string | NPC 显示名称 |
+| D | personality | string | notnull | !s!c | 性格标签 | ✅ | string | 用 `/` 分隔多个性格 |
+| E | background | string | notnull | !s!c | 背景故事 | ✅ | string | 自由文本 |
+| F | speech_style | string | notnull | !s!c | 说话风格 | ✅ | string | 用 `/` 分隔多个风格 |
+| G | default_model | string | notnull | !s | 默认AI模型 | ✅ | string | 如 `doubao-seed-2-0-pro` |
+| H | dialogue_examples | string | optional | !c | 对话示例 | ❌ | string | JSON 数组格式字符串 |
+| I | tools | string | optional | !c | 可用工具列表 | ❌ | string | JSON 数组格式字符串 |
+| J | client_icon | string | optional | !c | 客户端图标路径 | ❌ | string | 资源路径 |
+| K | internal_notes | string | optional | !a | 内部备注 | ❌ | string | 内部说明 |
 
 ### 示例数据
 
@@ -167,13 +168,13 @@ message NpcConfig {
 
 ### 表头
 
-| 列号 | Row 1 (字段名) | Row 2 (约束/可见性) | Row 3 (中文注释) | 必填 | 类型 | 格式要求 |
-|------|---------------|---------------------|-------------------|------|------|---------|
-| A | index | notnull&only/!s!c | 节点标识 | ✅ | string | 同一 `graph_id` 内唯一，仅允许小写字母/数字/下划线，如 `start`、`branch`、`help_villager` |
-| B | graph_id | notnull/!s!c | 剧情图ID | ✅ | string | 标识此节点属于哪个剧情图，如 `village_attack`、`dark_forest` |
-| C | type | notnull/!s!c | 节点类型 | ✅ | string | 仅允许：`StoryBeat` / `Branch` / `Choice` / `Condition` / `AIGenerate` / `Hub` / `Endpoint` |
-| D | text? | optional/!s!c | 展示文本 | ❌ | string | 自由文本，`StoryBeat`/`Choice` 类型必填，其他类型可空。如 `村庄遭到袭击，火光冲天...` |
-| E | properties? | optional/!s | 扩展属性 | ❌ | map<string,string> | `k=v;k=v` 格式。不同 type 有不同扩展字段（见下方 properties 字段说明）。仅服务端可见 |
+| 列号 | Row 1 (字段名) | Row 2 (类型) | Row 3 (约束) | Row 4 (可见性) | Row 5 (中文注释) | 必填 | 类型 | 格式要求 |
+|------|---------------|-------------|-------------|----------------|-------------------|------|------|---------|
+| A | index | string | notnull&only | !s!c | 节点标识 | ✅ | string | 同一 `graph_id` 内唯一，仅允许小写字母/数字/下划线，如 `start`、`branch`、`help_villager` |
+| B | graph_id | string | notnull | !s!c | 剧情图ID | ✅ | string | 标识此节点属于哪个剧情图，如 `village_attack`、`dark_forest` |
+| C | type | string | notnull | !s!c | 节点类型 | ✅ | string | 仅允许：`StoryBeat` / `Branch` / `Choice` / `Condition` / `AIGenerate` / `Hub` / `Endpoint` |
+| D | text? | string | optional | !s!c | 展示文本 | ❌ | string | 自由文本，`StoryBeat`/`Choice` 类型必填，其他类型可空。如 `村庄遭到袭击，火光冲天...` |
+| E | properties? | string | optional | !s | 扩展属性 | ❌ | map<string,string> | `k=v;k=v` 格式。不同 type 有不同扩展字段（见下方 properties 字段说明）。仅服务端可见 |
 
 #### properties 字段说明（按 type 区分）
 
@@ -209,15 +210,15 @@ message NpcConfig {
 
 ### 表头
 
-| 列号 | Row 1 (字段名) | Row 2 (约束/可见性) | Row 3 (中文注释) | 必填 | 类型 | 格式要求 |
-|------|---------------|---------------------|-------------------|------|------|---------|
-| A | graph_id | notnull/!s!c | 剧情图ID | ✅ | string | 必须与 StoryNodes 中的 `graph_id` 对应 |
-| B | from_index | notnull/!s!c | 起始节点 | ✅ | string | 必须是 StoryNodes 中存在的 `index` |
-| C | to_index | notnull/!s!c | 目标节点 | ✅ | string | 必须是 StoryNodes 中存在的 `index` |
-| D | type | notnull/!s!c | 边类型 | ✅ | string | 仅允许：`Sequential` / `Conditional` / `Choice` |
-| E | label? | optional/!s!c | 选项文案 | ❌ | string | `Choice` 类型时展示给玩家的选项文本，如 `帮助村民` |
-| F | condition? | optional/!s | TagBank条件 | ❌ | string | `Conditional` 类型必填。格式见下方条件表达式规范。仅服务端可见 |
-| G | priority? | optional/!s | 优先级 | ❌ | int32 | 同一 `from_index` 有多条边时，优先评估 priority 小的。默认 0。仅服务端可见 |
+| 列号 | Row 1 (字段名) | Row 2 (类型) | Row 3 (约束) | Row 4 (可见性) | Row 5 (中文注释) | 必填 | 类型 | 格式要求 |
+|------|---------------|-------------|-------------|----------------|-------------------|------|------|---------|
+| A | graph_id | string | notnull | !s!c | 剧情图ID | ✅ | string | 必须与 StoryNodes 中的 `graph_id` 对应 |
+| B | from_index | string | notnull | !s!c | 起始节点 | ✅ | string | 必须是 StoryNodes 中存在的 `index` |
+| C | to_index | string | notnull | !s!c | 目标节点 | ✅ | string | 必须是 StoryNodes 中存在的 `index` |
+| D | type | string | notnull | !s!c | 边类型 | ✅ | string | 仅允许：`Sequential` / `Conditional` / `Choice` |
+| E | label? | string | optional | !s!c | 选项文案 | ❌ | string | `Choice` 类型时展示给玩家的选项文本，如 `帮助村民` |
+| F | condition? | string | optional | !s | TagBank条件 | ❌ | string | `Conditional` 类型必填。格式见下方条件表达式规范。仅服务端可见 |
+| G | priority? | int32 | optional | !s | 优先级 | ❌ | int32 | 同一 `from_index` 有多条边时，优先评估 priority 小的。默认 0。仅服务端可见 |
 
 #### 条件表达式规范
 
@@ -258,14 +259,14 @@ message NpcConfig {
 
 ### 表头
 
-| 列号 | Row 1 (字段名) | Row 2 (约束/可见性) | Row 3 (中文注释) | 必填 | 类型 | 格式要求 |
-|------|---------------|---------------------|-------------------|------|------|---------|
-| A | mood | notnull/!s!c | 情绪标签 | ✅ | string | 情绪关键词，如 `tense`、`peaceful`、`mysterious`、`melancholy` |
-| B | scene | notnull/!s!c | 场景标签 | ✅ | string | 场景关键词，如 `combat`、`village`、`forest`、`concert` |
-| C | prompt | optional/!s | BGM生成提示词 | ❌ | string | 自由文本，描述期望的 BGM 风格。如 `紧张的战斗鼓点，节奏急促，带有金属打击感`。仅服务端可见 |
-| D | duration | notnull/!s!c | 时长秒数 | ✅ | int32 | 正整数，单位秒。如 `60`、`90`、`120` |
-| E | model? | optional/!s | AI模型 | ❌ | string | 留空则使用全局默认音乐模型。如 `doubao-music`。仅服务端可见 |
-| F | tags? | optional/!s | 扩展标签 | ❌ | map<string,string> | `k=v;k=v` 格式。如 `intensity=high;tempo=fast`。仅服务端可见 |
+| 列号 | Row 1 (字段名) | Row 2 (类型) | Row 3 (约束) | Row 4 (可见性) | Row 5 (中文注释) | 必填 | 类型 | 格式要求 |
+|------|---------------|-------------|-------------|----------------|-------------------|------|------|---------|
+| A | mood | string | notnull | !s!c | 情绪标签 | ✅ | string | 情绪关键词，如 `tense`、`peaceful`、`mysterious`、`melancholy` |
+| B | scene | string | notnull | !s!c | 场景标签 | ✅ | string | 场景关键词，如 `combat`、`village`、`forest`、`concert` |
+| C | prompt | string | optional | !s | BGM生成提示词 | ❌ | string | 自由文本，描述期望的 BGM 风格。如 `紧张的战斗鼓点，节奏急促，带有金属打击感`。仅服务端可见 |
+| D | duration | int32 | notnull | !s!c | 时长秒数 | ✅ | int32 | 正整数，单位秒。如 `60`、`90`、`120` |
+| E | model? | string | optional | !s | AI模型 | ❌ | string | 留空则使用全局默认音乐模型。如 `doubao-music`。仅服务端可见 |
+| F | tags? | string | optional | !s | 扩展标签 | ❌ | map<string,string> | `k=v;k=v` 格式。如 `intensity=high;tempo=fast`。仅服务端可见 |
 
 ### 示例数据
 
@@ -284,13 +285,13 @@ message NpcConfig {
 
 ### 表头
 
-| 列号 | Row 1 (字段名) | Row 2 (约束/可见性) | Row 3 (中文注释) | 必填 | 类型 | 格式要求 |
-|------|---------------|---------------------|-------------------|------|------|---------|
-| A | tag_key | notnull&only/!s | 标签键 | ✅ | string | 全局唯一，建议用 `.` 分层命名，如 `mood.peaceful`、`reputation.villager`、`flag.met_elder`。仅服务端可见 |
-| B | default_value | notnull/!s | 默认值 | ✅ | string | 标签的默认值。空字符串表示无默认值（必须由运行时写入）。仅服务端可见 |
-| C | trust | notnull/!s | 信任等级 | ✅ | string | 仅允许：`Authoritative` / `ClientAdvisory` / `System`。仅服务端可见 |
-| D | source | notnull/!s | 来源标识 | ✅ | string | 标签来源描述，如 `config`（策划配置）、`client`（客户端上报）、`event:battle_win`（游戏事件）。仅服务端可见 |
-| E | description? | optional/!a | 描述 | ❌ | string | 中文说明，仅供策划参考。仅后台可见 |
+| 列号 | Row 1 (字段名) | Row 2 (类型) | Row 3 (约束) | Row 4 (可见性) | Row 5 (中文注释) | 必填 | 类型 | 格式要求 |
+|------|---------------|-------------|-------------|----------------|-------------------|------|------|---------|
+| A | tag_key | string | notnull&only | !s | 标签键 | ✅ | string | 全局唯一，建议用 `.` 分层命名，如 `mood.peaceful`、`reputation.villager`、`flag.met_elder`。仅服务端可见 |
+| B | default_value | string | notnull | !s | 默认值 | ✅ | string | 标签的默认值。空字符串表示无默认值（必须由运行时写入）。仅服务端可见 |
+| C | trust | string | notnull | !s | 信任等级 | ✅ | string | 仅允许：`Authoritative` / `ClientAdvisory` / `System`。仅服务端可见 |
+| D | source | string | notnull | !s | 来源标识 | ✅ | string | 标签来源描述，如 `config`（策划配置）、`client`（客户端上报）、`event:battle_win`（游戏事件）。仅服务端可见 |
+| E | description? | string | optional | !a | 描述 | ❌ | string | 中文说明，仅供策划参考。仅后台可见 |
 
 ### 示例数据
 

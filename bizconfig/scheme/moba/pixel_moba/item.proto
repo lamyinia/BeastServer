@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.item;
+option go_package = "beast.biz.moba.pixel_moba.item";
+
+message ItemRowServer {
+    uint32 id = 1;
+    string index = 2;
+    string name = 3;
+    string item_type = 4;
+    string equip_slot = 5;
+    int32 price = 6;
+    bool is_consumable = 7;
+    int32 stack_max = 8;
+    string stat_bonus = 9;
+    uint32 effect_id = 10;
+    float sell_price_pct = 11;
+}
+
+message ItemServerConfig {
+    repeated ItemRowServer rows = 1;
+}
+
+message ItemRowClient {
+    uint32 id = 1;
+    string index = 2;
+    string name = 3;
+    string item_type = 4;
+    string equip_slot = 5;
+    int32 price = 6;
+    bool is_consumable = 7;
+    int32 stack_max = 8;
+    string stat_bonus = 9;
+    float sell_price_pct = 10;
+    string client_icon_path = 11;
+}
+
+message ItemClientConfig {
+    repeated ItemRowClient rows = 1;
+}

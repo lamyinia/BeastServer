@@ -72,3 +72,57 @@ function(beast_add_plugin PLUGIN_NAME)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins"
     )
 endfunction()
+
+# beast_add_biz_protos(<plugin_name> <scheme_dir> [GLOB] [PROTOS <proto files relative to scheme_dir...>])
+#
+# 为插件生成策划表(biz scheme)protobuf 编译目标。产物:${_target}_biz 静态库,
+# 头文件扁平输出到 ${CMAKE_CURRENT_BINARY_DIR}/generated/biz/。
+# 调用方需自行 target_link_libraries(<beast_plugin_${plugin_name}> PRIVATE <beast_plugin_${plugin_name}_biz>)。
+#
+# 用法:
+#   beast_add_biz_protos(pixelmoba "${BEAST_BIZ_SCHEME_DIR}/moba/pixel_moba" GLOB)
+#   beast_add_biz_protos(demo_tick "${BEAST_BIZ_SCHEME_DIR}/example/npc" PROTOS npc.proto)
+function(beast_add_biz_protos PLUGIN_NAME SCHEME_DIR)
+    set(options GLOB)
+    set(multi_value PROTOS)
+    cmake_parse_arguments(P "${options}" "" "${multi_value}" ${ARGN})
+
+    set(_target "beast_plugin_${PLUGIN_NAME}_biz")
+    set(_gen_dir "${CMAKE_CURRENT_BINARY_DIR}/generated/biz")
+    file(MAKE_DIRECTORY "${_gen_dir}")
+
+    if(P_GLOB)
+        file(GLOB _proto_files CONFIGURE_DEPENDS "${SCHEME_DIR}/*.proto")
+    else()
+        set(_proto_files "")
+        foreach(_f IN LISTS P_PROTOS)
+            list(APPEND _proto_files "${SCHEME_DIR}/${_f}")
+        endforeach()
+    endif()
+
+    if(NOT _proto_files)
+        message(WARNING "beast_add_biz_protos(${PLUGIN_NAME}): no .proto found in ${SCHEME_DIR}")
+        return()
+    endif()
+
+    set(_pb_srcs "")
+    set(_pb_hdrs "")
+    foreach(_p IN LISTS _proto_files)
+        get_filename_component(_name "${_p}" NAME_WE)
+        list(APPEND _pb_srcs "${_gen_dir}/${_name}.pb.cc")
+        list(APPEND _pb_hdrs "${_gen_dir}/${_name}.pb.h")
+    endforeach()
+
+    add_custom_command(
+        OUTPUT ${_pb_srcs} ${_pb_hdrs}
+        COMMAND $<TARGET_FILE:protobuf::protoc>
+        ARGS --cpp_out=${_gen_dir} -I ${SCHEME_DIR} ${_proto_files}
+        DEPENDS ${_proto_files} protobuf::protoc
+        COMMENT "Generating ${PLUGIN_NAME} biz scheme protobuf sources"
+        VERBATIM
+    )
+
+    add_library(${_target} STATIC ${_pb_srcs} ${_pb_hdrs})
+    target_link_libraries(${_target} PUBLIC protobuf::libprotobuf)
+    target_include_directories(${_target} PUBLIC "${_gen_dir}")
+endfunction()

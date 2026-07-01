@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.map_tower;
+option go_package = "beast.biz.moba.pixel_moba.map_tower";
+
+message MapTowerRowServer {
+    uint32 arena_id = 1;
+    string tower_id = 2;
+    string team = 3;
+    string rect = 4;
+}
+
+message MapTowerServerConfig {
+    repeated MapTowerRowServer rows = 1;
+}
+
+message MapTowerRowClient {
+    uint32 arena_id = 1;
+    string tower_id = 2;
+    string team = 3;
+    string rect = 4;
+}
+
+message MapTowerClientConfig {
+    repeated MapTowerRowClient rows = 1;
+}

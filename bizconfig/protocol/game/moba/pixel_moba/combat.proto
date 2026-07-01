@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package beast.moba.pixel;
+
+import "types.proto";
+
+// 客户端请求释放技能
+// route:CastCmd|c2s|pixelmoba.cast
+message CastCmd {
+  uint32 skill_id = 1;                              // 外键 → skill.id
+  beast.moba.common.Vec2 target_pos = 2;            // point cast(地面技能,如法师火球落点)
+  uint32 target_entity_id = 3;                      // target cast(目标单位),0 = 无目标/自动选择
+}
+
+// 服务端广播:某单位释放了技能(其他客户端播放特效/动画)
+// 注意:此 Notify 是"瞬时触发",动画进度走 transform.animation
+//        丢失此 Notify 不影响重连(transform 持有进度)
+// route:CastNotify|s2c|pixelmoba.castnotify
+message CastNotify {
+  uint32 tick = 1;
+  uint32 caster_entity_id = 2;
+  uint32 skill_id = 3;
+  uint32 skill_level = 4;
+  beast.moba.common.Vec2 target_pos = 5;
+  uint32 target_entity_id = 6;
+}
+
+// 服务端单播:释放技能结果(校验失败反馈)
+// route:CastResult|s2c|pixelmoba.castresult
+message CastResult {
+  uint32 skill_id = 1;
+  bool success = 2;
+  string error_msg = 3;                             // no_hero/skill_not_found/cd_not_ready/mana_not_enough/out_of_range/no_skill_impl
+}
+
+// 客户端请求普通攻击(平A)
+// route:AttackCmd|c2s|pixelmoba.attack
+message AttackCmd {
+  uint32 target_entity_id = 1;                      // 0 = 自动选择攻击范围内最近敌方
+}
+
+// 服务端广播:某单位发起普通攻击(其他客户端播放平A起手动画/音效)
+// 伤害结算仍走 DamageNotify(skill_id=0 表示普攻),此 Notify 仅触发起手表现
+// route:AttackNotify|s2c|pixelmoba.attacknotify
+message AttackNotify {
+  uint32 tick = 1;
+  uint32 attacker_entity_id = 2;
+  uint32 target_entity_id = 3;
+}
+
+// 服务端广播:伤害结算(客户端用于飘字)
+// route:DamageNotify|s2c|pixelmoba.damage
+message DamageNotify {
+  uint32 tick = 1;
+  uint32 target_entity_id = 2;
+  uint32 source_entity_id = 3;                      // 0 = 未知来源/陷阱
+  uint32 skill_id = 4;                              // 0 = 普通攻击
+  int32 damage = 5;                                 // 实际造成的伤害(已结算护甲/法抗)
+  uint32 damage_type = 6;                           // 0 physical / 1 magical / 2 true
+  bool is_critical = 7;                             // 是否暴击(飘字放大)
+  int32 target_hp_after = 8;                         // 受击后血量(校验用)
+}
+
+// 服务端广播:治疗(客户端用于飘字+血条回血动画)
+// route:HealNotify|s2c|pixelmoba.heal
+message HealNotify {
+  uint32 tick = 1;
+  uint32 target_entity_id = 2;
+  uint32 source_entity_id = 3;                      // 0 = 自然回复
+  int32 heal_amount = 4;
+  int32 target_hp_after = 5;
+}

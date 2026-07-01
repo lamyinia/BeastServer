@@ -97,7 +97,7 @@ void OutboundHub::dispatch_message(
 
     const auto session = session_manager_->get_session(player_id);
     if (!session) {
-        BEAST_LOG_WARN("OutboundHub: no session for {}", player_id);
+        BEAST_LOG_TRACE("OutboundHub: no session for {}", player_id);
         complete(std::move(on_complete), OutboundSendResult::NoSession);
         return;
     }

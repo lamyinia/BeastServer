@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.map_wall;
+option go_package = "beast.biz.moba.pixel_moba.map_wall";
+
+message MapWallRowServer {
+    uint32 arena_id = 1;
+    string wall_index = 2;
+    string rect = 3;
+}
+
+message MapWallServerConfig {
+    repeated MapWallRowServer rows = 1;
+}
+
+message MapWallRowClient {
+    uint32 arena_id = 1;
+    string wall_index = 2;
+    string rect = 3;
+}
+
+message MapWallClientConfig {
+    repeated MapWallRowClient rows = 1;
+}
