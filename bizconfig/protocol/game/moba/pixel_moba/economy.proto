@@ -36,7 +36,9 @@ message SellItemResult {
 // route:EquipChangeNotify|s2c|pixelmoba.equipchange
 message EquipChangeNotify {
   uint32 entity_id = 1;
-  repeated uint32 equipped_item_ids = 2;           // 当前装备的所有 item_id
+  repeated uint32 equipped_item_ids = 2;           // 当前装备的所有 item_id(仅装备,不含消耗品,外观用)
+  repeated uint32 inventory_item_ids = 3;          // 完整背包 item_id 列表(含消耗品)
+  repeated uint32 inventory_item_counts = 4;       // 并行 count 列表(与 inventory_item_ids 一一对应)
 }
 
 // 服务端广播:升级

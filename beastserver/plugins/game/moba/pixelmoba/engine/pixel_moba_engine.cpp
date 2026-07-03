@@ -18,6 +18,7 @@ void PixelMobaEngine::on_start(beast::platform::engine::context::EngineContext& 
     economy_.on_start(ctx, world_);
     map_.on_start(ctx, world_);
     map_.set_combat(&combat_);   // 注入 CombatSystem 供 tick_towers 调 apply_damage
+    match_.set_combat(&combat_); // 注入 CombatSystem 供 create_hero_entities 调 find_hero_profile/init_hero_level_bonus
 
     if (world_.map_data) {
         BEAST_LOG_INFO(
@@ -34,6 +35,14 @@ void PixelMobaEngine::on_start(beast::platform::engine::context::EngineContext& 
     }
 }
 
+namespace {
+
+bool is_high_freq_input(const PlayerInputPayload& payload) {
+    return std::holds_alternative<PingCmd>(payload) || std::holds_alternative<MoveCmd>(payload);
+}
+
+} // namespace
+
 void PixelMobaEngine::on_tick(
     const beast::platform::Tick tick,
     const beast::platform::TimestampMs dt_ms) {
@@ -41,12 +50,18 @@ void PixelMobaEngine::on_tick(
     world_.current_tick = tick;
 
     if (!inputs_.empty()) {
+        bool has_notable_input = false;
         for (const auto& in : inputs_) {
+            if (!is_high_freq_input(in.payload)) {
+                has_notable_input = true;
+            }
             dispatch_input(in);
         }
         const std::size_t count = inputs_.size();
         inputs_.clear();
-        BEAST_LOG_INFO("pixel_moba tick={} dispatched {} inputs", tick_, count);
+        if (has_notable_input) {
+            BEAST_LOG_INFO("pixel_moba tick={} dispatched {} inputs", tick_, count);
+        }
     }
 
     tick_systems(tick, dt_ms);
@@ -252,7 +267,12 @@ void PixelMobaEngine::broadcast_attr_dirty() {
         msg.set_crit_rate(h.crit_rate);
         msg.set_crit_damage(h.crit_damage);
         msg.set_cd_reduction(h.cd_reduction);
-        ctx_->broadcast("pixelmoba.attr", msg);
+        // 按视野过滤:自己+同队英雄总收(友方共享);敌方在视野内才收(避免泄露装备/属性)
+        for (const auto& pid : ctx_->player_ids()) {
+            if (world_.is_entity_visible_to_player(pid, eid)) {
+                ctx_->send(pid, "pixelmoba.attr", msg);
+            }
+        }
     }
     world_.attr_dirty.clear();
 }
@@ -272,7 +292,12 @@ void PixelMobaEngine::broadcast_buff_dirty() {
                 be->set_buff_flags(b.buff_flag);
             }
         }
-        ctx_->broadcast("pixelmoba.buff", msg);
+        // 按视野过滤(同 attr):敌方 buff 仅在视野内同步
+        for (const auto& pid : ctx_->player_ids()) {
+            if (world_.is_entity_visible_to_player(pid, eid)) {
+                ctx_->send(pid, "pixelmoba.buff", msg);
+            }
+        }
     }
     world_.buff_dirty.clear();
 }
@@ -289,7 +314,12 @@ void PixelMobaEngine::broadcast_skill_dirty() {
             ss->set_skill_id(s.skill_id);
             ss->set_level(s.level);
         }
-        ctx_->broadcast("pixelmoba.skillslot", msg);
+        // 按视野过滤(同 attr):敌方技能等级/CD 仅在视野内同步
+        for (const auto& pid : ctx_->player_ids()) {
+            if (world_.is_entity_visible_to_player(pid, eid)) {
+                ctx_->send(pid, "pixelmoba.skillslot", msg);
+            }
+        }
     }
     world_.skill_dirty.clear();
 }
@@ -332,15 +362,25 @@ void PixelMobaEngine::broadcast_monster_dirty() {
         msg.set_camp_id(m.camp_id);
         msg.set_respawn_tick(static_cast<std::uint32_t>(m.respawn_tick));
         msg.set_state_flags(e.state_flags);
-        ctx_->broadcast("pixelmoba.monstercamp", msg);
+        // 按视野过滤:野怪营地对该玩家可见(任一同队英雄视野内有野怪)才发,
+        // 避免野怪刷新时间泄露给敌方(抢龙/反野关键信息)
+        for (const auto& pid : ctx_->player_ids()) {
+            if (world_.is_entity_visible_to_player(pid, eid)) {
+                ctx_->send(pid, "pixelmoba.monstercamp", msg);
+            }
+        }
     }
     world_.monster_dirty.clear();
 }
 
-// 断线重连:向该玩家单播全量快照(ReconnectAck + 各 Tier 全量消息),不做 AOI 裁剪。
-// 字段填充与各 broadcast_* 方法一致;首帧发全量以让客户端立即重建,下 tick 恢复 AOI 裁剪。
+// 断线重连:向该玩家单播按视野裁剪后的快照(ReconnectAck + 各 Tier 消息)。
+// Tier1 transform/projectile/field + Tier2 attr/buff/skill 按 is_entity_visible_to_player 裁剪;
+// Tier3 tower 全发(MOBA 公开信息);Tier3 monster camp 按队伍视野裁剪(野怪刷新是抢龙关键信息)。
 void PixelMobaEngine::send_reconnect_snapshot(const beast::platform::PlayerId& player_id) {
     if (!ctx_) return;
+
+    // 重连时 AOI grid 可能是上一 tick 状态或空,先重建确保可见性判断准确
+    world_.sync_aoi();
 
     // 1. ReconnectAck:局信息 + 自身实体
     ReconnectAck ack;
@@ -357,12 +397,13 @@ void PixelMobaEngine::send_reconnect_snapshot(const beast::platform::PlayerId& p
     // 选英雄阶段(match 未开始)无局内快照,客户端走正常 heroselect 流程
     if (!world_.match_started) return;
 
-    // 2. Tier1 TransformSync 全量(不 AOI 裁剪)
+    // 2. Tier1 TransformSync 按视野裁剪(自己+同队英雄+AOI 内敌方)
     {
         TransformSync msg;
         msg.set_tick(static_cast<std::uint32_t>(tick_));
         for (const auto& [eid, e] : world_.entities) {
             if (e.kind == EntityKind::Tower || e.kind == EntityKind::Projectile || e.kind == EntityKind::Field) continue;
+            if (!world_.is_entity_visible_to_player(player_id, eid)) continue;   // 视野裁剪
             auto* a = msg.add_actors();
             a->set_entity_id(static_cast<std::uint32_t>(e.entity_id));
             a->set_team(e.team);
@@ -385,7 +426,7 @@ void PixelMobaEngine::send_reconnect_snapshot(const beast::platform::PlayerId& p
         ctx_->send(player_id, "pixelmoba.transform", msg);
     }
 
-    // 3. Tier1 ProjectileSync 全量
+    // 3. Tier1 ProjectileSync 按视野裁剪
     {
         ProjectileSync msg;
         msg.set_tick(static_cast<std::uint32_t>(tick_));
@@ -393,6 +434,7 @@ void PixelMobaEngine::send_reconnect_snapshot(const beast::platform::PlayerId& p
             auto e_it = world_.entities.find(pid_proj);
             if (e_it == world_.entities.end()) continue;
             const auto& e = e_it->second;
+            if (!world_.is_entity_visible_to_player(player_id, pid_proj)) continue;   // 视野裁剪
             auto* p = msg.add_projectiles();
             p->set_entity_id(static_cast<std::uint32_t>(e.entity_id));
             p->mutable_pos()->set_x(e.pos.x);
@@ -408,10 +450,11 @@ void PixelMobaEngine::send_reconnect_snapshot(const beast::platform::PlayerId& p
         if (msg.projectiles_size() > 0) ctx_->send(player_id, "pixelmoba.projectile", msg);
     }
 
-    // 4. Tier2 AttrSync 全量(每英雄一条)
+    // 4. Tier2 AttrSync 按视野裁剪(每英雄一条)
     for (const auto& [eid, h] : world_.heroes) {
         auto e_it = world_.entities.find(eid);
         if (e_it == world_.entities.end()) continue;
+        if (!world_.is_entity_visible_to_player(player_id, eid)) continue;   // 视野裁剪
         AttrSync msg;
         msg.set_entity_id(static_cast<std::uint32_t>(eid));
         msg.set_max_hp(e_it->second.max_hp);
@@ -431,8 +474,9 @@ void PixelMobaEngine::send_reconnect_snapshot(const beast::platform::PlayerId& p
         ctx_->send(player_id, "pixelmoba.attr", msg);
     }
 
-    // 5. Tier2 BuffSync 全量(每实体一条)
+    // 5. Tier2 BuffSync 按视野裁剪(每实体一条)
     for (const auto& [eid, blist] : world_.buffs) {
+        if (!world_.is_entity_visible_to_player(player_id, eid)) continue;   // 视野裁剪
         BuffSync msg;
         msg.set_entity_id(static_cast<std::uint32_t>(eid));
         for (const auto& b : blist) {
@@ -445,8 +489,9 @@ void PixelMobaEngine::send_reconnect_snapshot(const beast::platform::PlayerId& p
         ctx_->send(player_id, "pixelmoba.buff", msg);
     }
 
-    // 6. Tier2 SkillSlotSync 全量(每英雄一条)
+    // 6. Tier2 SkillSlotSync 按视野裁剪(每英雄一条)
     for (const auto& [eid, h] : world_.heroes) {
+        if (!world_.is_entity_visible_to_player(player_id, eid)) continue;   // 视野裁剪
         SkillSlotSync msg;
         msg.set_entity_id(static_cast<std::uint32_t>(eid));
         for (const auto& s : h.skills) {
@@ -457,7 +502,7 @@ void PixelMobaEngine::send_reconnect_snapshot(const beast::platform::PlayerId& p
         ctx_->send(player_id, "pixelmoba.skillslot", msg);
     }
 
-    // 7. Tier3 TowerStateSync 全量
+    // 7. Tier3 TowerStateSync 全发(MOBA 塔状态对双方公开)
     for (const auto& [eid, t] : world_.towers) {
         auto e_it = world_.entities.find(eid);
         if (e_it == world_.entities.end()) continue;
@@ -475,21 +520,26 @@ void PixelMobaEngine::send_reconnect_snapshot(const beast::platform::PlayerId& p
         ctx_->send(player_id, "pixelmoba.tower", msg);
     }
 
-    // 8. Tier3 MonsterCampSync 全量
-    for (const auto& [eid, m] : world_.monsters) {
-        auto e_it = world_.entities.find(eid);
-        if (e_it == world_.entities.end()) continue;
-        const auto& e = e_it->second;
-        MonsterCampSync msg;
-        msg.set_entity_id(static_cast<std::uint32_t>(eid));
-        msg.set_camp_id(m.camp_id);
-        msg.set_respawn_tick(static_cast<std::uint32_t>(m.respawn_tick));
-        msg.set_state_flags(e.state_flags);
-        ctx_->send(player_id, "pixelmoba.monstercamp", msg);
+    // 8. Tier3 MonsterCampSync 按队伍视野裁剪
+    //    (野怪刷新时间是抢龙/反野关键信息,不应无条件泄露给敌方)
+    //    简化:任一同队英雄视野内有任一野怪 → 全发营地列表;否则跳过
+    if (world_.is_monster_camp_visible_to_player(player_id)) {
+        for (const auto& [eid, m] : world_.monsters) {
+            auto e_it = world_.entities.find(eid);
+            if (e_it == world_.entities.end()) continue;
+            const auto& e = e_it->second;
+            MonsterCampSync msg;
+            msg.set_entity_id(static_cast<std::uint32_t>(eid));
+            msg.set_camp_id(m.camp_id);
+            msg.set_respawn_tick(static_cast<std::uint32_t>(m.respawn_tick));
+            msg.set_state_flags(e.state_flags);
+            ctx_->send(player_id, "pixelmoba.monstercamp", msg);
+        }
     }
 
-    // 9. FieldSpawnNotify 全量(每活跃区域一条)
+    // 9. FieldSpawnNotify 按视野裁剪(每活跃区域一条)
     for (const auto& [fid, field] : world_.persistent_fields) {
+        if (!world_.is_entity_visible_to_player(player_id, fid)) continue;   // 视野裁剪
         FieldSpawnNotify msg;
         msg.set_entity_id(static_cast<std::uint32_t>(fid));
         msg.set_caster_entity_id(static_cast<std::uint32_t>(field.caster_entity_id));

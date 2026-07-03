@@ -924,7 +924,7 @@ def emit_message_gdscript(
                 class_name=message.class_name
             ),
             "\tif data.is_empty():",
-            "\t\treturn null",
+            f'\t\treturn load("{load_res}").new()',
             "",
             f'\tvar obj = load("{load_res}").new()',
             "\tvar offset: int = 0",

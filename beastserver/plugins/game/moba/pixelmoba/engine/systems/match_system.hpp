@@ -16,6 +16,8 @@ namespace beast::moba::pixel {
 
 using beast::platform::bizutil::math::Vec2f;
 
+class CombatSystem;   // 前向声明,MatchSystem 通过 combat_ 调 find_hero_profile/init_hero_level_bonus
+
 enum class MatchState : std::uint8_t {
     Selecting,
     Loading,
@@ -33,9 +35,13 @@ public:
     void consume(const beast::platform::PlayerId& player_id, const PingCmd& cmd);
     void consume(const beast::platform::PlayerId& player_id, const LoadCompleteCmd& cmd);
 
+    // 注入 CombatSystem(供 create_hero_entities 查 hero_profiles / 应用 level=1 属性)
+    void set_combat(CombatSystem* c) { combat_ = c; }
+
 private:
     beast::platform::engine::context::EngineContext* ctx_{nullptr};
     WorldState* world_{nullptr};
+    CombatSystem* combat_{nullptr};
 
     MatchState state_{MatchState::Selecting};
     beast::platform::Tick current_tick_{0};
@@ -45,7 +51,6 @@ private:
     void create_hero_entities();
     void revive_heroes();
     [[nodiscard]] std::uint32_t player_index(const beast::platform::PlayerId& pid) const;
-    [[nodiscard]] static Vec2f parse_spawn(const std::string& s);
 };
 
 } // namespace beast::moba::pixel

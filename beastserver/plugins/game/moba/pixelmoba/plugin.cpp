@@ -16,6 +16,8 @@
 #include "map_river.pb.h"
 #include "map_tower.pb.h"
 #include "map_wall.pb.h"
+#include "match_rewards.pb.h"
+#include "recipe.pb.h"
 #include "skill.pb.h"
 #include "skill_level.pb.h"
 #include "unit.pb.h"
@@ -37,6 +39,8 @@ BEAST_PLUGIN_EXPORT void beast_plugin_init(beast::platform::plugin::ServerContex
     ctx.register_biz_table<biz::map_river::MapRiverServerConfig>(kMapRiverTableLogicalName);
     ctx.register_biz_table<biz::map_tower::MapTowerServerConfig>(kMapTowerTableLogicalName);
     ctx.register_biz_table<biz::map_wall::MapWallServerConfig>(kMapWallTableLogicalName);
+    ctx.register_biz_table<biz::match_rewards::MatchRewardsServerConfig>(kMatchRewardsTableLogicalName);
+    ctx.register_biz_table<biz::recipe::RecipeServerConfig>(kRecipeTableLogicalName);
     ctx.register_biz_table<biz::skill::SkillServerConfig>(kSkillTableLogicalName);
     ctx.register_biz_table<biz::skill_level::SkillLevelServerConfig>(kSkillLevelTableLogicalName);
     ctx.register_biz_table<biz::unit::UnitServerConfig>(kUnitTableLogicalName);

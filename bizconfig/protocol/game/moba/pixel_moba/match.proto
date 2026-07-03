@@ -15,7 +15,7 @@ message HeroSelectCmd {
 // 服务端广播:某玩家选择了英雄(选人界面显示)
 // route:HeroSelectNotify|s2c|pixelmoba.heroselectnotify
 message HeroSelectNotify {
-  uint32 player_id = 1;
+  uint32 slot_index = 1;                           // 房间座位 0..N-1
   uint32 hero_id = 2;
 }
 
@@ -31,11 +31,12 @@ message MatchStartNotify {
 }
 
 message MatchPlayer {
-  uint32 player_id = 1;                            // 平台玩家ID
+  uint32 slot_index = 1;                           // 房间座位 0..N-1
   uint32 entity_id = 2;                            // 服务端分配的本局实体ID
   uint32 hero_id = 3;                              // 外键 → unit.id
   uint32 team = 4;                                 // 1 blue / 2 red
   beast.moba.common.Vec2 spawn_pos = 5;
+  uint64 platform_pid = 6;                         // 平台玩家 ID，与 AuthResponse.pid 一致
 }
 
 // 客户端通知:加载完成(等所有玩家 ready 后再 start)
@@ -55,9 +56,10 @@ message MatchEndNotify {
 }
 
 message MatchPlayerResult {
-  uint32 player_id = 1;
+  uint32 slot_index = 1;                           // 房间座位 0..N-1
   uint32 kills = 2;
   uint32 deaths = 3;
   uint32 assists = 4;
   int32 gold_earned = 5;
+  uint64 platform_pid = 6;                         // 平台玩家 ID，与 AuthResponse.pid 一致
 }

@@ -31,7 +31,7 @@ void PixelMobaEngine::on_hero_select(
 void PixelMobaEngine::on_ping(
     const beast::platform::PlayerId& player_id, const PingCmd& request) {
     inputs_.push_back({player_id, request});
-    BEAST_LOG_INFO("pixel_moba on_event ping player={} ts={}", player_id, request.client_ts());
+    BEAST_LOG_TRACE("pixel_moba on_event ping player={} ts={}", player_id, request.client_ts());
 }
 
 void PixelMobaEngine::on_load_complete(
@@ -43,7 +43,7 @@ void PixelMobaEngine::on_load_complete(
 void PixelMobaEngine::on_move(
     const beast::platform::PlayerId& player_id, const MoveCmd& request) {
     inputs_.push_back({player_id, request});
-    BEAST_LOG_INFO(
+    BEAST_LOG_TRACE(
         "pixel_moba on_event move player={} dir=({},{}) path_size={}",
         player_id,
         request.dir().x(),

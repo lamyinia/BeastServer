@@ -6,6 +6,6 @@ import "types.proto";
 
 // route:MoveCmd|c2s|pixelmoba.move
 message MoveCmd {
-  beast.moba.common.Vec2 dir = 1;                    // 当前朝向(单位向量,0,0 表示停止)
-  repeated beast.moba.common.Vec2i path = 2;         // 目标路径点(像素坐标,空表示原地停止)
+  beast.moba.common.Vec2 dir = 1;                    // 摇杆朝向；path 为空时 (0,0)=停止
+  repeated beast.moba.common.Vec2i path = 2;           // 目标像素点；非空时服务端 A* 寻路（取末点作 goal）
 }

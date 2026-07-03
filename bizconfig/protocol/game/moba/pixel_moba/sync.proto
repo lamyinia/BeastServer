@@ -140,10 +140,9 @@ message MonsterCampSync {
 }
 
 // ===== 持续伤害区域(法师地面 AOE)=====
-
-// route:FieldSpawnNotify|s2c|pixelmoba.fieldspawn
 // 创建时广播一次(事件驱动,不走 dirty)。客户端据 skill_id 查表渲染区域特效,
 // 据 expire_tick 倒计时消失。区域位置静态,无需每 tick 同步。
+// route:FieldSpawnNotify|s2c|pixelmoba.fieldspawn
 message FieldSpawnNotify {
   uint32 entity_id = 1;
   uint32 caster_entity_id = 2;
@@ -159,8 +158,8 @@ message FieldSpawnNotify {
   beast.moba.common.Vec2 facing = 12;               // sector/rect 朝向(归一化)
 }
 
-// route:FieldRemoveNotify|s2c|pixelmoba.fieldremove
 // 区域到期销毁时广播。客户端移除区域特效。
+// route:FieldRemoveNotify|s2c|pixelmoba.fieldremove
 message FieldRemoveNotify {
   uint32 entity_id = 1;
 }

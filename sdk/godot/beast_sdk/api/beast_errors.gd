@@ -32,9 +32,10 @@ static func code_to_string(code: Code) -> String:
 			return "unknown"
 
 static func parse_server_error_json(payload: PackedByteArray) -> String:
-	var text := payload.get_string_from_utf8()
-	if text.is_empty():
+	if payload.is_empty() or payload[0] != 0x7b:
 		return "unknown_error"
+
+	var text := payload.get_string_from_utf8()
 	var json := JSON.new()
 	if json.parse(text) != OK:
 		return text

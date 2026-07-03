@@ -9,6 +9,7 @@
 namespace beast::moba::pixel {
 
 using beast::platform::bizutil::math::Vec2f;
+using beast::platform::bizutil::math::Vec2i;
 
 inline constexpr float kTilePx = 16.f;
 
@@ -29,17 +30,21 @@ public:
     void add_dynamic_block(std::uint32_t x, std::uint32_t y);
     void remove_dynamic_block(std::uint32_t x, std::uint32_t y);
 
-    // A* 寻路:像素输入/输出,返回像素路径点(含起点和终点)。
-    // 起点或终点被阻挡、或无路径时返回空。
+    // A* 寻路 + string pulling:像素输入,返回待到达路点(不含起点,末点为 goal_px)。
     [[nodiscard]] std::vector<Vec2f> find_path(Vec2f start_px, Vec2f goal_px) const;
 
+    // Bresenham 格点视线(仅静态墙),用于行走中跳点。
+    [[nodiscard]] bool is_line_clear(Vec2i from, Vec2i to) const;
+
     [[nodiscard]] static Vec2f tile_center_to_pixel(std::uint32_t tx, std::uint32_t ty);
+    [[nodiscard]] static Vec2i pixel_to_tile(Vec2f px);
 
 private:
+    [[nodiscard]] bool is_passable_tile(Vec2i tile) const;
+
     std::uint32_t width_;
     std::uint32_t height_;
     std::vector<bool> blocked_;  // [y * width_ + x]
-    // 动态障碍层(运行时可增删),key = y*width_+x。目前由 PersistentField 预留接口填充。
     std::unordered_set<std::uint64_t> dynamic_blocked_;
 };
 

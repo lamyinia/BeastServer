@@ -27,9 +27,10 @@ private:
     void spawn_monsters();
     void spawn_towers();
     void spawn_bases();
-    void tick_monster_ai(beast::platform::Tick tick);
+    void tick_monster_ai(beast::platform::Tick tick, float dt_sec);
     void tick_minions(beast::platform::Tick tick, beast::platform::TimestampMs dt_ms);
     void tick_towers(beast::platform::Tick tick);
+    void update_bush_state();
 
     // 野怪 AI 子步骤
     void monster_scan_aggro(beast::platform::EntityId eid, Entity& e, MonsterData& m, beast::platform::Tick tick);

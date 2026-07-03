@@ -8,6 +8,7 @@ message MapMonsterSpawnRowServer {
     string spawn_id = 2;
     string type = 3;
     string rect = 4;
+    uint32 unit_id = 5;
 }
 
 message MapMonsterSpawnServerConfig {
@@ -19,6 +20,7 @@ message MapMonsterSpawnRowClient {
     string spawn_id = 2;
     string type = 3;
     string rect = 4;
+    uint32 unit_id = 5;
 }
 
 message MapMonsterSpawnClientConfig {

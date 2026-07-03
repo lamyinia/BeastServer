@@ -38,8 +38,8 @@ message UnitRowServer {
     float cd_reduction = 32;
     float dodge = 33;
     float hit_rate = 34;
-    float slow_resist = 35;
-    float tenacity = 36;
+    bool is_ranged = 35;
+    float attack_projectile_speed = 36;
 }
 
 message UnitServerConfig {
@@ -81,8 +81,8 @@ message UnitRowClient {
     float cd_reduction = 32;
     float dodge = 33;
     float hit_rate = 34;
-    float slow_resist = 35;
-    float tenacity = 36;
+    bool is_ranged = 35;
+    float attack_projectile_speed = 36;
 }
 
 message UnitClientConfig {

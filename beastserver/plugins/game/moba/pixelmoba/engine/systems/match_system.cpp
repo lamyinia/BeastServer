@@ -1,5 +1,7 @@
 #include "engine/systems/match_system.hpp"
 
+#include "engine/player_identity.hpp"
+#include "engine/systems/combat_system.hpp"   // combat_->find_hero_profile/init_hero_level_bonus
 #include "biz_tables.hpp"
 #include "engine/world_state.hpp"
 
@@ -7,7 +9,6 @@
 #include "beast/platform/core/log/logger.hpp"
 #include "beast/platform/engine/context/engine_context.hpp"
 #include "hero_profiles.pb.h"
-#include "map_base.pb.h"
 #include "unit.pb.h"
 
 #include <chrono>
@@ -41,14 +42,6 @@ std::uint32_t MatchSystem::player_index(const beast::platform::PlayerId& pid) co
     return 0;
 }
 
-Vec2f MatchSystem::parse_spawn(const std::string& s) {
-    const auto comma = s.find(',');
-    if (comma == std::string::npos) return {};
-    const float tx = static_cast<float>(std::stoi(s.substr(0, comma)));
-    const float ty = static_cast<float>(std::stoi(s.substr(comma + 1)));
-    return {tx * kTilePx, ty * kTilePx};
-}
-
 void MatchSystem::create_hero_entities() {
     const auto* store = ctx_->biz_config();
     if (!store) {
@@ -58,13 +51,16 @@ void MatchSystem::create_hero_entities() {
 
     Vec2f blue_spawn{};
     Vec2f red_spawn{};
-    const auto* base_cfg = store->find<biz::map_base::MapBaseServerConfig>(kMapBaseTableLogicalName);
-    if (base_cfg) {
-        for (const auto& row : base_cfg->rows()) {
-            if (row.arena_id() != kArenaId) continue;
-            if (row.team() == "blue") blue_spawn = parse_spawn(row.spawn());
-            else if (row.team() == "red") red_spawn = parse_spawn(row.spawn());
+    if (world_->map_data) {
+        for (const auto& b : world_->map_data->bases) {
+            if (b.team == "blue") blue_spawn = b.spawn_pos;
+            else if (b.team == "red") red_spawn = b.spawn_pos;
         }
+    }
+    if (blue_spawn.length_squared() < 1e-6f || red_spawn.length_squared() < 1e-6f) {
+        BEAST_LOG_WARN(
+            "match create_hero_entities: missing spawn from map_data blue=({},{}) red=({},{})",
+            blue_spawn.x, blue_spawn.y, red_spawn.x, red_spawn.y);
     }
 
     world_->map_id = kArenaId;
@@ -99,19 +95,19 @@ void MatchSystem::create_hero_entities() {
         const auto eid = world_->spawn_entity(EntityKind::Hero, hero_id, team);
         auto& e = world_->entities[eid];
         e.pos = spawn;
-        e.hp = unit.max_hp();
-        e.max_hp = unit.max_hp();
+        e.hp = unit.max_hp();   // 初始 HP;recompute 后 max_hp = base + level1_bonus,hp 保持(满血由 init_hero_level_bonus 设)
         e.vision_range = unit.vision_range();
         e.collision_radius = unit.collision_radius();
-        e.state_flags = 0x1; // bit0 alive
+        WorldState::mark_alive(e);
 
         auto& h = world_->heroes[eid];
         h.player_id = pid;
         h.level = 1;
         h.gold = hero_profile->start_gold();
-        h.mana = unit.max_mana();
-        h.max_mana = unit.max_mana();
+        h.mana = unit.max_mana();   // 初始 mana;同 hp,recompute 后由 init_hero_level_bonus 设满
         // 填 base 属性,final 由 recompute_hero_stats 聚合(此时 equip/buff 为 0,final=base)
+        h.base_max_hp = unit.max_hp();
+        h.base_max_mana = unit.max_mana();
         h.base_move_speed = unit.move_speed();
         h.base_attack_range = unit.attack_range();
         h.base_physical_attack = unit.physical_attack();
@@ -120,13 +116,33 @@ void MatchSystem::create_hero_entities() {
         h.base_magic_defense = unit.magic_defense();
         h.base_crit_rate = unit.crit_rate();
         h.base_crit_damage = unit.crit_damage();
-        h.cd_reduction = unit.cd_reduction();
+        h.base_hp_regen = unit.hp_regen();
+        h.base_mana_regen = unit.mana_regen();
+        h.base_cd_reduction = unit.cd_reduction();
+        h.base_attack_before = unit.attack_before();
+        h.base_attack_after = unit.attack_after();
+        // 平 A 攻击间隔(秒):unit.attack_interval<=0 时兜底 0.5s,recompute_hero_stats 会聚合 level_bonus
+        h.base_attack_interval = unit.attack_interval() > 0.f ? unit.attack_interval() : 0.5f;
+        h.attack_interval = h.base_attack_interval;
+        // 远程英雄标记 + 弹道速度(从 unit 表读,true 时 consume(AttackCmd) 走弹道分支)
+        h.is_ranged = unit.is_ranged();
+        h.base_attack_projectile_speed = unit.attack_projectile_speed();
+        // 读 hero_profiles 的 max_level / r_unlock_level(兜底 18 / 6)
+        h.max_level = (hero_profile->max_level() > 0) ? static_cast<std::uint32_t>(hero_profile->max_level()) : 18u;
+        h.r_unlock_level = (hero_profile->r_unlock_level() > 0)
+                               ? static_cast<std::uint32_t>(hero_profile->r_unlock_level()) : 6u;
         world_->recompute_hero_stats(eid);
         h.skills.resize(4);
         h.skills[0] = HeroData::SkillSlot{hero_profile->skill_q_id(), 0, 0};
         h.skills[1] = HeroData::SkillSlot{hero_profile->skill_w_id(), 0, 0};
         h.skills[2] = HeroData::SkillSlot{hero_profile->skill_e_id(), 0, 0};
         h.skills[3] = HeroData::SkillSlot{hero_profile->skill_r_id(), 0, 0};
+
+        // 应用 level=1 的 level_bonus 属性增量(配表语义:达到该级时获得的增量)
+        // 内部会同步 Entity.max_hp/max_mana、skill_point、recompute_hero_stats、mark_attr_dirty
+        if (combat_ != nullptr) {
+            combat_->init_hero_level_bonus(eid);
+        }
 
         world_->player_entities[pid] = eid;
 
@@ -152,7 +168,7 @@ void MatchSystem::consume(const beast::platform::PlayerId& player_id, const Hero
     selected_heroes_[player_id] = hero_id;
 
     HeroSelectNotify notify;
-    notify.set_player_id(player_index(player_id));
+    notify.set_slot_index(player_index(player_id));
     notify.set_hero_id(hero_id);
     ctx_->broadcast("pixelmoba.heroselectnotify", notify);
 
@@ -172,7 +188,8 @@ void MatchSystem::consume(const beast::platform::PlayerId& player_id, const Hero
             const auto idx = player_index(pid);
             const std::uint32_t team = (idx < 2) ? 1 : 2;
             auto* mp = start.add_players();
-            mp->set_player_id(idx);
+            mp->set_slot_index(idx);
+            mp->set_platform_pid(parse_platform_pid(pid));
             const auto eid_it = world_->player_entities.find(pid);
             if (eid_it != world_->player_entities.end()) {
                 mp->set_entity_id(static_cast<std::uint32_t>(eid_it->second));
@@ -252,11 +269,15 @@ void MatchSystem::revive_heroes() {
         e.pos = spawn;
         e.vel = {};
         e.hp = e.max_hp;
-        e.state_flags = 0x1;   // 复位为存活(清 bit8 dead)
+        WorldState::mark_alive(e);   // 复位为存活(清 bit8 dead,设 bit0 alive)
         h.mana = h.max_mana;
         h.respawn_tick = 0;
+        h.move_path.clear();
+        h.move_path_idx = 0;
         // 清死亡动画回 idle(set_animation(0,0) 不下发,客户端 idle 自处理)
         world_->set_animation(eid, /*animate_id=*/0, /*duration_ms=*/0);
+        // 复活清死亡前残留的 buff/debuff(MOBA 通用约定)
+        world_->clear_buffs(eid);
         world_->mark_attr_dirty(eid);   // hp/mana 变化同步
 
         RespawnNotify notify;
@@ -265,7 +286,14 @@ void MatchSystem::revive_heroes() {
         notify.mutable_spawn_pos()->set_y(spawn.y);
         notify.set_hp_after(e.hp);
         notify.set_mana_after(h.mana);
-        if (ctx_) ctx_->broadcast("pixelmoba.respawn", notify);
+        // 复活通知:自己 + 同队队友总收到(友方共享);敌方按视野(复活点在敌方视野内才发)
+        if (ctx_) {
+            for (const auto& pid : ctx_->player_ids()) {
+                if (world_->is_entity_visible_to_player(pid, eid)) {
+                    ctx_->send(pid, "pixelmoba.respawn", notify);
+                }
+            }
+        }
 
         BEAST_LOG_INFO("match revive hero eid={} team={} pos=({},{})", eid, e.team, spawn.x, spawn.y);
     }

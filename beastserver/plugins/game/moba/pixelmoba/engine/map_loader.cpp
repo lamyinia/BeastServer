@@ -6,6 +6,7 @@
 #include "beast/platform/core/log/logger.hpp"
 #include "map_arena.pb.h"
 #include "map_base.pb.h"
+#include "map_bush.pb.h"
 #include "map_lane.pb.h"
 #include "map_monster_spawn.pb.h"
 #include "map_tower.pb.h"
@@ -232,6 +233,7 @@ std::shared_ptr<MapData> load_map(
             CampData camp;
             camp.id = row.spawn_id();
             camp.type = row.type();
+            camp.unit_id = row.unit_id();
             const auto r = parse_rect(row.rect());
             if (r) {
                 camp.pos = tile_to_pixel(r->x + r->w / 2, r->y + r->h / 2);
@@ -272,10 +274,26 @@ std::shared_ptr<MapData> load_map(
         }
     }
 
+    // map_bush:草丛(rect 为 tile 坐标,转像素 min/max 供 point-in-rect 判定)
+    const auto* bush_cfg = store.find<biz::map_bush::MapBushServerConfig>(kMapBushTableLogicalName);
+    if (bush_cfg) {
+        for (const auto& row : bush_cfg->rows()) {
+            if (row.arena_id() != arena_id) continue;
+            BushData bush;
+            bush.id = row.bush_index();
+            const auto r = parse_rect(row.rect());
+            if (r) {
+                bush.min = tile_to_pixel(r->x, r->y);
+                bush.max = tile_to_pixel(r->x + r->w, r->y + r->h);
+            }
+            map->bushes.push_back(std::move(bush));
+        }
+    }
+
     BEAST_LOG_INFO(
-        "map_loader: arena={} {}x{} walls_blocked lanes={} camps={} bases={} towers={}",
+        "map_loader: arena={} {}x{} walls_blocked lanes={} camps={} bases={} towers={} bushes={}",
         arena_id, map->width, map->height,
-        map->lanes.size(), map->camps.size(), map->bases.size(), map->towers.size());
+        map->lanes.size(), map->camps.size(), map->bases.size(), map->towers.size(), map->bushes.size());
 
     return map;
 }

@@ -31,6 +31,24 @@ enum class EntityKind : std::uint8_t {
 // 复活时由 MatchSystem 调 set_animation(eid, 0, 0) 清回 idle。
 constexpr std::uint32_t kDeathAnimId = 0xFFFF0000u;
 
+// state_flags 位定义:bit0 alive 与 bit8 dead 互斥,统一通过 mark_dead/mark_alive 维护。
+// 所有死亡路径(英雄/小兵/野怪/塔)走 mark_dead;所有复活/spawn 路径走 mark_alive。
+constexpr std::uint32_t kStateAliveBit = 0x1u;
+constexpr std::uint32_t kStateDeadBit  = 0x100u;
+
+// buff_flags 位定义(与 types.proto 注释对齐,recompute_hero_stats 聚合后写入 Entity.buff_flags)
+constexpr std::uint32_t kBuffStunBit       = 0x1u;       // bit0  眩晕:阻止移动+平A+施法
+constexpr std::uint32_t kBuffSlowBit       = 0x2u;       // bit1  减速:通过 move_speed_mod 降速(无需 consumer 检查)
+constexpr std::uint32_t kBuffSilenceBit    = 0x4u;       // bit2  沉默:阻止施法
+constexpr std::uint32_t kBuffRootBit       = 0x8u;       // bit3  禁锢:阻止移动(可平A+施法)
+constexpr std::uint32_t kBuffDisarmBit     = 0x10u;      // bit4  禁攻:阻止平A
+constexpr std::uint32_t kBuffAirborneBit   = 0x20u;      // bit5  击飞:阻止一切行动
+constexpr std::uint32_t kBuffSuppressedBit = 0x40u;      // bit6  压制:阻止一切行动
+constexpr std::uint32_t kBuffBlindBit      = 0x80u;      // bit7  致盲(预留,本轮不实现 consumer)
+constexpr std::uint32_t kBuffCharmBit      = 0x100u;     // bit8  魅惑(预留)
+constexpr std::uint32_t kBuffFearBit       = 0x200u;     // bit9  恐惧(预留)
+constexpr std::uint32_t kBuffTauntBit      = 0x400u;     // bit10 嘲讽(预留)
+
 // 运行时实体公共状态(对齐 SnapshotPush::UnitState 公共字段)。
 struct Entity {
     beast::platform::EntityId entity_id{0};
@@ -42,13 +60,29 @@ struct Entity {
     std::int32_t hp{0};
     std::int32_t max_hp{0};
     std::uint32_t buff_flags{0};
-    std::uint32_t state_flags{0};    // bit0 alive / bit8 dead ...
+    std::uint32_t state_flags{0};    // kStateAliveBit / kStateDeadBit 互斥,用 mark_dead/mark_alive 维护
     std::uint32_t target_entity_id{0};
     float vision_range{0.f};          // 视野半径(像素),AOI 裁剪用
     float collision_radius{0.f};      // 圆形碰撞半径(像素),从 unit 配表填充
     std::uint32_t animate_id{0};            // 0 = idle(不下发);技能用 skill_level.animate_id;死亡用 kDeathAnimId
     beast::platform::Tick anim_start_tick{0};
     std::uint32_t anim_duration_ms{0};      // 0 = 循环(不自动过期);>0 = 一次性,到期 expire_animations 清回 idle
+    bool in_bush{false};                          // 当前是否在草丛内(每 tick 由 MapSystem 更新)
+    beast::platform::Tick reveal_tick{0};         // 暴露到期 tick(0=不暴露;>0 且 tick<reveal_tick 时可见)
+};
+
+// 冲刺状态(冲锋/翻滚射击用):active 期间 MovementSystem 跳过正常移动,
+// CombatSystem::tick_dashes 推进位置 + 检测碰撞(墙体/敌方)。
+struct DashState {
+    bool active{false};
+    Vec2f dir{0.f, 0.f};                   // 冲刺方向(归一化)
+    float speed{0.f};                       // 冲刺速度(像素/秒)
+    beast::platform::Tick expire_tick{0};   // 冲刺到期 tick
+    std::uint32_t skill_id{0};              // 触发冲刺的技能(用于 on-hit 效果)
+    std::uint32_t skill_level{0};
+    bool stop_on_hit{false};                // 冲锋=true(撞敌停止),翻滚=false(穿单位)
+    std::int32_t damage{0};                 // cast 时 snapshot 的伤害值(含 scaling)
+    std::uint32_t damage_type{0};           // cast 时 snapshot 的伤害类型(0物理/1法术/2真实)
 };
 
 // 英雄特有(玩家控制)
@@ -64,6 +98,9 @@ struct HeroData {
     std::int32_t gold{0};
     std::int32_t exp{0};
     beast::platform::Tick respawn_tick{0};   // 0 = 存活中;>0 = 复活到期 tick(apply_damage 死亡时设)
+    std::uint32_t max_level{18};              // 从 hero_profiles.max_level 读
+    std::uint32_t r_unlock_level{6};          // 从 hero_profiles.r_unlock_level 读(R 槽解锁等级)
+    std::uint32_t skill_point{0};             // 升级时按 hero_level_bonus.skill_point 累加
     // KDA 计数(整局累计,复活不重置)
     std::uint32_t kills{0};
     std::uint32_t deaths{0};
@@ -74,16 +111,48 @@ struct HeroData {
     std::int32_t base_magic_attack{0};
     std::int32_t base_physical_defense{0};
     std::int32_t base_magic_defense{0};
+    std::int32_t base_max_hp{0};        // 从 unit.max_hp 读,recompute 聚合到 Entity.max_hp
+    std::int32_t base_max_mana{0};      // 从 unit.max_mana 读,recompute 聚合到 h.max_mana
     float base_move_speed{0.f};
     float base_attack_range{0.f};
     float base_crit_rate{0.f};
     float base_crit_damage{0.f};
+    float base_hp_regen{0.f};
+    float base_mana_regen{0.f};
+    float base_cd_reduction{0.f};
+    float base_attack_before{0.f};
+    float base_attack_after{0.f};
+    bool is_ranged{false};                      // 从 unit.is_ranged 读:true=远程英雄(平 A 走弹道)
+    float base_attack_projectile_speed{0.f};     // 从 unit.attack_projectile_speed 读(像素/秒)
+
+    // 等级成长加成(hero_level_bonus 表逐级累加):每次升级 += row 对应字段。
+    // recompute_hero_stats 聚合时:final = (base + level_bonus + equip) + buff_mod。
+    std::int32_t level_bonus_physical_attack{0};
+    std::int32_t level_bonus_magic_attack{0};
+    std::int32_t level_bonus_physical_defense{0};
+    std::int32_t level_bonus_magic_defense{0};
+    std::int32_t level_bonus_max_hp{0};      // 升级时累加,recompute 写 Entity.max_hp
+    std::int32_t level_bonus_max_mana{0};    // 升级时累加,recompute 写 h.max_mana
+    float level_bonus_move_speed{0.f};
+    float level_bonus_attack_range{0.f};
+    float level_bonus_attack_interval{0.f};
+    float level_bonus_crit_rate{0.f};
+    float level_bonus_crit_damage{0.f};
+    float level_bonus_hp_regen{0.f};
+    float level_bonus_mana_regen{0.f};
+    float level_bonus_cd_reduction{0.f};
+    float level_bonus_attack_before{0.f};
+    float level_bonus_attack_after{0.f};
 
     // 装备加成(item.stat_bonus 累加)
     std::int32_t equip_physical_attack{0};
     std::int32_t equip_magic_attack{0};
     std::int32_t equip_physical_defense{0};
     std::int32_t equip_magic_defense{0};
+    std::int32_t equip_max_hp{0};       // 装备加血量,recompute 写 Entity.max_hp
+    std::int32_t equip_max_mana{0};     // 装备加蓝量,recompute 写 h.max_mana
+    float equip_hp_regen{0.f};          // 装备加回血,recompute 聚合到 h.hp_regen
+    float equip_mana_regen{0.f};        // 装备加回蓝,recompute 聚合到 h.mana_regen
     float equip_move_speed_pct{0.f};   // 百分比(0.1 = +10%)
     float equip_crit_rate{0.f};
     float equip_crit_damage{0.f};
@@ -97,21 +166,48 @@ struct HeroData {
     std::int32_t magic_defense{0};
     float crit_rate{0.f};
     float crit_damage{0.f};
-    float cd_reduction{0.f};
+    float cd_reduction{0.f};            // final,recompute 聚合 base+level_bonus,clamp [0, 0.4]
+    float hp_regen{0.f};                // final,economy tick 用
+    float mana_regen{0.f};              // final,economy tick 用
+    float attack_before{0.f};           // final,前摇(秒)
+    float attack_after{0.f};            // final,后摇(秒)
 
-    std::vector<std::uint32_t> equipped_item_ids;
+    // 平 A 攻击间隔(秒):base 从 unit.attack_interval 读;final = attack_before + attack_after。
+    // consume(AttackCmd) 用 attack_interval * 60 转 tick 校验 attack_cd_tick,防外挂高频触发。
+    float base_attack_interval{0.f};    // 保留向后兼容(match_system 读 unit.attack_interval 作兜底)
+    float attack_interval{0.5f};        // final,recompute 里 = attack_before + attack_after
+    std::uint32_t attack_cd_tick{0};    // 下次可平 A 的 tick
+
+    // 背包:6 格上限。装备恒占独立槽位(count=1);消耗品同 id 堆叠(count 1..stack_max)。
+    struct InventorySlot {
+        std::uint32_t item_id{0};
+        std::int32_t count{1};
+    };
+    std::vector<InventorySlot> inventory;
+    static constexpr std::size_t kInventoryMaxSlots = 6;
     struct SkillSlot {
         std::uint32_t skill_id{0};
         std::uint32_t level{0};
         std::uint32_t cd_tick{0};
     };
     std::vector<SkillSlot> skills;
+
+    // 服务端寻路:MoveCmd.path 触发 A* 后沿路点行走;空=无路径指令。
+    std::vector<Vec2f> move_path;
+    std::size_t move_path_idx{0};
+
+    // 冲刺状态(冲锋/翻滚射击)
+    DashState dash_state;
+
+    // 奥术飞弹 per-cast per-target 命中计数(递减伤害用),cast 时清空
+    std::unordered_map<beast::platform::EntityId, int> missile_hit_counts;
 };
 
 // 飞行物(技能弹道)
 struct ProjectileData {
     beast::platform::EntityId caster_entity_id{0};
     std::uint32_t skill_id{0};
+    std::uint32_t skill_level{0};   // 施法时的技能等级(land 时查 level_row 用)
     beast::platform::EntityId target_entity_id{0};
     Vec2f target_pos{};
     std::int32_t damage{0};
@@ -119,6 +215,11 @@ struct ProjectileData {
     float speed{0.f};
     std::uint32_t lifetime_tick{0};
     bool is_homing{false};
+    bool is_single_target{false};   // true=平 A 弹道(仅命中 target_entity_id);false=技能 AOE 弹道(走 is_in_shape)
+    bool is_piercing{false};        // 穿透弹道(穿透射击):沿路径命中多个敌人,不等待 land
+    std::vector<beast::platform::EntityId> hit_entities;  // 穿透弹道已命中实体(防重复)
+    bool is_multi_missile{false};   // 多弹道(奥术飞弹):land 时按 caster.missile_hit_counts 递减
+    bool force_crit{false};         // 强化普攻强制暴击(远程英雄翻滚射击后平A弹道用)
     SkillShape shape;   // 落点 AOE 形状(由 ProjectileSkill 从 level_row 写入)
 };
 
@@ -127,6 +228,7 @@ struct ProjectileData {
 struct PersistentFieldData {
     beast::platform::EntityId caster_entity_id{0};
     std::uint32_t skill_id{0};
+    std::uint32_t skill_level{0};   // 施法时的技能等级(tick 时查 level_row 用)
     Vec2f center{};
     std::int32_t damage_per_tick{0};      // 每次 interval 的伤害(已含 scaling,cast 时算好)
     std::uint32_t damage_type{0};
@@ -135,6 +237,8 @@ struct PersistentFieldData {
     std::uint32_t interval_ticks{0};
     bool blocks_movement{false};
     std::vector<std::uint32_t> blocked_tiles;  // 注册的 tile key(y*width+x),销毁时清理
+    bool follow_caster{false};       // 旋风斩=true:每 tick 把 center 同步到 caster.pos
+    bool is_whirlwind{false};        // 旋风斩=true:震荡加成 + 末击击飞减速/冻结目标
     SkillShape shape;   // 区域形状(shape.radius 替代原 radius 字段)
 };
 
@@ -142,6 +246,11 @@ struct MinionData {
     std::uint32_t lane{0};   // index into map_data->lanes
     std::uint32_t wave{0};
     std::size_t path_idx{0}; // 当前目标路径点下标
+    beast::platform::EntityId target_eid{0};    // 当前攻击目标
+    std::uint32_t attack_cd_tick{0};             // 下次可攻击 tick
+    std::int32_t attack{0};                      // 伤害/次(从 unit 表读)
+    float attack_range{0.f};                     // 攻击距离(像素)
+    std::uint32_t attack_interval_ticks{0};      // 攻击间隔(tick)
 };
 
 enum class MonsterAIState : std::uint8_t {
@@ -163,12 +272,20 @@ struct MonsterData {
     std::uint32_t attack_cd_tick{0}; // 下次可攻击的 tick
     std::vector<Vec2f> path;         // 当前 A* 路径(像素)
     std::size_t path_idx{0};         // 当前路径点下标
+    // 属性(从 unit 表读,替代硬编码常量)
+    std::int32_t attack{0};                      // 伤害/次
+    float attack_range{0.f};                     // 攻击距离(像素)
+    std::uint32_t attack_interval_ticks{0};      // 攻击间隔(tick)
+    float move_speed{0.f};                       // 移动速度(像素/秒)
+    std::uint32_t respawn_tick_default{0};       // 默认复活间隔(tick)
 };
 
 struct TowerData {
     std::uint32_t lane{0};   // 0 top / 1 mid / 2 bot / 3 base
     std::uint32_t tier{0};   // 0 外塔 / 1 内塔 / 2 水晶
     beast::platform::Tick attack_cd_tick{0};  // 下次可攻击 tick
+    beast::platform::EntityId aggro_target_eid{0};   // 仇恨目标(英雄打英雄时锁定)
+    beast::platform::Tick aggro_expire_tick{0};      // 仇恨过期 tick(0=无仇恨)
 };
 
 // 运行时 buff 实例。属性修正由施加方(通常是技能逻辑)在创建时填入,
@@ -247,6 +364,85 @@ struct WorldState {
         }
     }
 
+    // ===== state_flags 统一维护:bit0 alive 与 bit8 dead 互斥 =====
+    static void mark_dead(Entity& e) {
+        e.state_flags &= ~kStateAliveBit;
+        e.state_flags |= kStateDeadBit;
+    }
+    static void mark_alive(Entity& e) {
+        e.state_flags &= ~kStateDeadBit;
+        e.state_flags |= kStateAliveBit;
+    }
+    static bool is_dead(const Entity& e) { return (e.state_flags & kStateDeadBit) != 0; }
+    static bool is_alive(const Entity& e) { return (e.state_flags & kStateAliveBit) != 0; }
+
+    // 判断 eid 是否对 pid 可见:
+    //   - 是自己 → 总可见
+    //   - 是同队英雄 → 友方视野共享,总可见
+    //   - 死亡的敌方 → 不可见(避免死后属性/buff 变化泄露)
+    //   - 其余按 AOI 圆形视野
+    bool is_entity_visible_to_player(
+        const beast::platform::PlayerId& pid,
+        beast::platform::EntityId eid) const {
+        const auto pe = player_entities.find(pid);
+        if (pe == player_entities.end()) return false;
+        const auto self_eid = pe->second;
+        if (eid == self_eid) return true;
+
+        auto e_it = entities.find(eid);
+        if (e_it == entities.end()) return false;
+        const auto& target = e_it->second;
+
+        auto self_it = entities.find(self_eid);
+        if (self_it == entities.end()) return false;
+        const auto& self = self_it->second;
+
+        // 友方英雄视野共享(同队 Hero 始终可见)
+        if (target.kind == EntityKind::Hero && target.team == self.team) return true;
+
+        // 死亡的敌方单位不可见(避免死后属性/buff 变化泄露)
+        if (is_dead(target)) return false;
+
+        // 草丛遮蔽:target 在草丛内时,仅同草丛友方/被暴露/草丛内敌方可见
+        if (target.in_bush && !self.in_bush) {
+            // self 在草丛外,target 在草丛内:仅 target 被暴露时可见
+            if (target.reveal_tick == 0 || current_tick >= target.reveal_tick) return false;
+        }
+
+        // AOI 圆形视野
+        const float vision = self.vision_range > 0.f ? self.vision_range : 256.f;
+        const float dx = target.pos.x - self.pos.x;
+        const float dy = target.pos.y - self.pos.y;
+        return (dx * dx + dy * dy) <= vision * vision;
+    }
+
+    // 重连专用:野怪营地是否对 pid 所在队伍可见(任意同队存活英雄视野内有野怪即算)。
+    // 用于重连 MonsterCampSync 裁剪 — 野怪刷新时间是抢龙关键信息,不应无条件泄露。
+    bool is_monster_camp_visible_to_player(const beast::platform::PlayerId& pid) const {
+        const auto pe = player_entities.find(pid);
+        if (pe == player_entities.end()) return false;
+        const auto self_eid = pe->second;
+        auto self_it = entities.find(self_eid);
+        if (self_it == entities.end()) return false;
+        const auto& self = self_it->second;
+
+        for (const auto& [aid, ah] : heroes) {
+            auto ae_it = entities.find(aid);
+            if (ae_it == entities.end()) continue;
+            const auto& ally = ae_it->second;
+            if (ally.team != self.team) continue;
+            if (is_dead(ally)) continue;
+            const float aly_vision = ally.vision_range > 0.f ? ally.vision_range : 256.f;
+            for (auto nid : aoi_grid.query_radius(ally.pos, aly_vision)) {
+                if (nid == aid) continue;
+                auto ne_it = entities.find(nid);
+                if (ne_it == entities.end()) continue;
+                if (ne_it->second.kind == EntityKind::Monster) return true;
+            }
+        }
+        return false;
+    }
+
     // 重算英雄最终属性:base + equip_bonus + Σbuff 修正。
     // 装备变化(EconomySystem)/buff 增删(技能)/buff 过期(tick_buffs)后调用。
     void recompute_hero_stats(beast::platform::EntityId eid) {
@@ -254,13 +450,13 @@ struct WorldState {
         if (h_it == heroes.end()) return;
         auto& h = h_it->second;
 
-        std::int32_t pa = h.base_physical_attack + h.equip_physical_attack;
-        std::int32_t ma = h.base_magic_attack + h.equip_magic_attack;
-        std::int32_t pd = h.base_physical_defense + h.equip_physical_defense;
-        std::int32_t md = h.base_magic_defense + h.equip_magic_defense;
+        std::int32_t pa = h.base_physical_attack + h.level_bonus_physical_attack + h.equip_physical_attack;
+        std::int32_t ma = h.base_magic_attack + h.level_bonus_magic_attack + h.equip_magic_attack;
+        std::int32_t pd = h.base_physical_defense + h.level_bonus_physical_defense + h.equip_physical_defense;
+        std::int32_t md = h.base_magic_defense + h.level_bonus_magic_defense + h.equip_magic_defense;
         float move_pct = h.equip_move_speed_pct;
-        float cr = h.base_crit_rate + h.equip_crit_rate;
-        float cd = h.base_crit_damage + h.equip_crit_damage;
+        float cr = h.base_crit_rate + h.level_bonus_crit_rate + h.equip_crit_rate;
+        float cd = h.base_crit_damage + h.level_bonus_crit_damage + h.equip_crit_damage;
 
         std::uint32_t flags = 0;
         auto b_it = buffs.find(eid);
@@ -281,18 +477,54 @@ struct WorldState {
         h.magic_attack = ma;
         h.physical_defense = pd;
         h.magic_defense = md;
-        h.move_speed = h.base_move_speed * (1.f + move_pct);
-        h.attack_range = h.base_attack_range;
+        h.move_speed = (h.base_move_speed + h.level_bonus_move_speed) * (1.f + move_pct);
+        h.attack_range = h.base_attack_range + h.level_bonus_attack_range;
         h.crit_rate = cr;
         h.crit_damage = cd;
+        // regen 聚合(base + level_bonus + equip)
+        h.hp_regen = h.base_hp_regen + h.level_bonus_hp_regen + h.equip_hp_regen;
+        h.mana_regen = h.base_mana_regen + h.level_bonus_mana_regen + h.equip_mana_regen;
+        // cd_reduction 聚合(上限 40%,MOBA 通用约定,防配表堆叠导致技能无 CD)
+        h.cd_reduction = std::min(0.4f, h.base_cd_reduction + h.level_bonus_cd_reduction);
+        // 前摇后摇聚合 + attack_interval = before + after(保持原 attack_interval 语义,不引入状态机)
+        h.attack_before = h.base_attack_before + h.level_bonus_attack_before;
+        h.attack_after = h.base_attack_after + h.level_bonus_attack_after;
+        h.attack_interval = h.attack_before + h.attack_after;
 
-        // 同步 buff_flags 到 Entity(供 snapshot 下发)
+        // 同步 buff_flags + max_hp/max_mana 聚合(base + level_bonus + equip)到 Entity
         auto e_it = entities.find(eid);
         if (e_it != entities.end()) {
             e_it->second.buff_flags = flags;
+            const std::int32_t new_max_hp = h.base_max_hp + h.level_bonus_max_hp + h.equip_max_hp;
+            const std::int32_t new_max_mana = h.base_max_mana + h.level_bonus_max_mana + h.equip_max_mana;
+            e_it->second.max_hp = new_max_hp;
+            h.max_mana = new_max_mana;
+            // 卖装备导致 max_hp 下降时,clamp 当前 hp 避免超过 max(买装备不加当前 hp,MOBA 约定)
+            if (e_it->second.hp > new_max_hp) e_it->second.hp = new_max_hp;
+            if (h.mana > new_max_mana) h.mana = new_max_mana;
         }
         // 属性聚合结果变化 → 标记 Tier2 attr dirty
         mark_attr_dirty(eid);
+    }
+
+    // 按 effect.stack_max 策略施加 buff:
+    // - stack_max<=1: 同 effect_id 刷新 expire_tick + mod 值(stacks 不变,保持 1)
+    // - stack_max>1: 同 effect_id 叠层(stacks+1 上限 stack_max)+ 刷新 expire_tick
+    // - 不同 effect_id: 独立共存(push_back)
+    void apply_buff(beast::platform::EntityId eid, BuffData buff, std::uint32_t stack_max) {
+        auto& vec = buffs[eid];
+        auto it = std::find_if(vec.begin(), vec.end(),
+            [&](const BuffData& b) { return b.effect_id == buff.effect_id; });
+        if (it != vec.end()) {
+            if (stack_max > 1) {
+                buff.stacks = (it->stacks < stack_max) ? it->stacks + 1 : stack_max;
+            }
+            *it = buff;
+        } else {
+            vec.push_back(std::move(buff));
+        }
+        recompute_hero_stats(eid);
+        mark_buff_dirty(eid);
     }
 
     // 施加 buff 并立即重算属性。
@@ -317,6 +549,56 @@ struct WorldState {
                 mark_buff_dirty(it->first);
             }
         }
+        // 清理过期 reveal_tick(攻击/施法暴露到期)
+        for (auto& [eid, e] : entities) {
+            if (e.reveal_tick > 0 && tick >= e.reveal_tick) {
+                e.reveal_tick = 0;
+            }
+        }
+    }
+
+    // 清空某英雄所有 buff(MOBA 死亡清状态约定:复活时不残留死前 debuff)。
+    void clear_buffs(beast::platform::EntityId eid) {
+        auto it = buffs.find(eid);
+        if (it == buffs.end()) return;
+        if (it->second.empty()) return;
+        it->second.clear();
+        recompute_hero_stats(eid);
+        mark_buff_dirty(eid);
+    }
+
+    // 按 effect_id 查找实体上的 buff(只读)。未找到返回 nullptr。
+    const BuffData* find_buff(beast::platform::EntityId eid, std::uint32_t effect_id) const {
+        auto it = buffs.find(eid);
+        if (it == buffs.end()) return nullptr;
+        for (const auto& b : it->second) {
+            if (b.effect_id == effect_id) return &b;
+        }
+        return nullptr;
+    }
+
+    // 按 effect_id 查找实体上的 buff(可变)。未找到返回 nullptr。
+    BuffData* find_buff_mut(beast::platform::EntityId eid, std::uint32_t effect_id) {
+        auto it = buffs.find(eid);
+        if (it == buffs.end()) return nullptr;
+        for (auto& b : it->second) {
+            if (b.effect_id == effect_id) return &b;
+        }
+        return nullptr;
+    }
+
+    // 按 effect_id 移除实体上的 buff(消耗型,强化普攻用)。返回是否移除成功。
+    bool remove_buff(beast::platform::EntityId eid, std::uint32_t effect_id) {
+        auto it = buffs.find(eid);
+        if (it == buffs.end()) return false;
+        auto& vec = it->second;
+        auto bit = std::find_if(vec.begin(), vec.end(),
+            [&](const BuffData& b) { return b.effect_id == effect_id; });
+        if (bit == vec.end()) return false;
+        vec.erase(bit);
+        recompute_hero_stats(eid);
+        mark_buff_dirty(eid);
+        return true;
     }
 
     // 设置实体动画(animate_id=0 表示回 idle)。duration_ms=0 表示循环(不自动过期)。

@@ -98,20 +98,27 @@ func main() {
 			}
 			fmt.Printf("  -> server %s (%d bytes, rows=%d)\n", serverRel, fileSize(serverAbs), rowCount)
 
-			clientRel, _, err := export.WriteTable(sheet, fds, export.SideClient, *clientDir)
-			if err != nil {
-				log.Printf("[ERROR] export client pb %s: %v", sheet.LogicalName, err)
-				hasError = true
-				continue
+			// 纯服务端表(无 !c 字段)跳过 client pb 生成,不视为错误
+			var clientRel, clientHash string
+			if len(sheet.ClientFields()) == 0 {
+				fmt.Printf("  -> (skip client pb: server-only table)\n")
+			} else {
+				var err2 error
+				clientRel, _, err2 = export.WriteTable(sheet, fds, export.SideClient, *clientDir)
+				if err2 != nil {
+					log.Printf("[ERROR] export client pb %s: %v", sheet.LogicalName, err2)
+					hasError = true
+					continue
+				}
+				clientAbs := filepath.Join(*clientDir, filepath.FromSlash(clientRel))
+				clientHash, err2 = fileSHA256(clientAbs)
+				if err2 != nil {
+					log.Printf("[ERROR] hash client pb %s: %v", clientAbs, err2)
+					hasError = true
+					continue
+				}
+				fmt.Printf("  -> client %s (%d bytes)\n", clientRel, fileSize(clientAbs))
 			}
-			clientAbs := filepath.Join(*clientDir, filepath.FromSlash(clientRel))
-			clientHash, err := fileSHA256(clientAbs)
-			if err != nil {
-				log.Printf("[ERROR] hash client pb %s: %v", clientAbs, err)
-				hasError = true
-				continue
-			}
-			fmt.Printf("  -> client %s (%d bytes)\n", clientRel, fileSize(clientAbs))
 
 			outputs = append(outputs, model.TableOutput{
 				LogicalName:  sheet.LogicalName,

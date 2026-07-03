@@ -4,19 +4,20 @@ package beast.biz.moba.pixel_moba.hero_profiles;
 option go_package = "beast.biz.moba.pixel_moba.hero_profiles";
 
 message HeroProfilesRowServer {
-    uint32 hero_id = 1;
-    string class = 2;
-    int32 max_level = 3;
-    int32 start_gold = 4;
-    int32 respawn_base_sec = 5;
-    float respawn_per_level_sec = 6;
-    uint32 skill_q_id = 7;
-    uint32 skill_w_id = 8;
-    uint32 skill_e_id = 9;
-    uint32 skill_r_id = 10;
-    int32 r_unlock_level = 11;
-    uint32 passive_skill_id = 12;
-    float base_attack_bonus = 13;
+    uint32 id = 1;
+    uint32 hero_id = 2;
+    string class = 3;
+    int32 max_level = 4;
+    int32 start_gold = 5;
+    int32 respawn_base_sec = 6;
+    float respawn_per_level_sec = 7;
+    uint32 skill_q_id = 8;
+    uint32 skill_w_id = 9;
+    uint32 skill_e_id = 10;
+    uint32 skill_r_id = 11;
+    int32 r_unlock_level = 12;
+    uint32 passive_skill_id = 13;
+    float base_attack_bonus = 14;
 }
 
 message HeroProfilesServerConfig {
@@ -24,19 +25,20 @@ message HeroProfilesServerConfig {
 }
 
 message HeroProfilesRowClient {
-    uint32 hero_id = 1;
-    string class = 2;
-    int32 max_level = 3;
-    int32 start_gold = 4;
-    int32 respawn_base_sec = 5;
-    float respawn_per_level_sec = 6;
-    uint32 skill_q_id = 7;
-    uint32 skill_w_id = 8;
-    uint32 skill_e_id = 9;
-    uint32 skill_r_id = 10;
-    int32 r_unlock_level = 11;
-    uint32 passive_skill_id = 12;
-    string lore = 13;
+    uint32 id = 1;
+    uint32 hero_id = 2;
+    string class = 3;
+    int32 max_level = 4;
+    int32 start_gold = 5;
+    int32 respawn_base_sec = 6;
+    float respawn_per_level_sec = 7;
+    uint32 skill_q_id = 8;
+    uint32 skill_w_id = 9;
+    uint32 skill_e_id = 10;
+    uint32 skill_r_id = 11;
+    int32 r_unlock_level = 12;
+    uint32 passive_skill_id = 13;
+    string lore = 14;
 }
 
 message HeroProfilesClientConfig {

@@ -211,9 +211,11 @@ func _handle_auth_response(payload: PackedByteArray, client_seq: int) -> void:
 
 
 func _try_emit_server_error(route: String, payload: PackedByteArray, client_seq: int) -> bool:
-	var text := payload.get_string_from_utf8()
-	if not text.begins_with("{"):
+	# 仅处理明文 JSON 错误体；protobuf 二进制勿转 UTF-8（会刷屏 Invalid UTF-8）
+	if payload.is_empty() or payload[0] != 0x7b:
 		return false
+
+	var text := payload.get_string_from_utf8()
 
 	var json := JSON.new()
 	if json.parse(text) != OK:
@@ -253,6 +255,6 @@ func _reset_session(clear_config: bool) -> void:
 	_player_id = ""
 	_login_client_seq = 0
 	_pending.clear()
-	_router.clear()
+	# 勿清空 _router：玩法层在 Autoload _ready 注册的 handler 需在 connect 后仍有效
 	if clear_config:
 		_config = null

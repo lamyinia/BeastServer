@@ -48,6 +48,16 @@ constexpr float kBaseCollisionRadius = 32.f;
 
 constexpr float kReachThresholdSq = 8.f * 8.f;  // 0.5 tile
 
+const biz::unit::UnitRowServer* find_unit_row(
+    const beast::platform::bizutil::config::BizConfigStore& store, std::uint32_t unit_id) {
+    const auto* cfg = store.find<biz::unit::UnitServerConfig>(kUnitTableLogicalName);
+    if (!cfg) return nullptr;
+    for (const auto& row : cfg->rows()) {
+        if (row.id() == unit_id) return &row;
+    }
+    return nullptr;
+}
+
 Vec2f normalize_or_zero(Vec2f v) {
     const float len_sq = v.length_squared();
     if (len_sq < 1e-6f) return {0.f, 0.f};
@@ -79,28 +89,44 @@ void MapSystem::on_start(
 
 void MapSystem::tick(beast::platform::Tick tick, beast::platform::TimestampMs dt_ms) {
     if (!world_ || !world_->match_started || world_->match_ended) return;
-    tick_monster_ai(tick);
+    const float dt_sec = static_cast<float>(dt_ms) / 1000.f;
+    update_bush_state();
+    tick_monster_ai(tick, dt_sec);
     tick_minions(tick, dt_ms);
     tick_towers(tick);
 }
 
 void MapSystem::spawn_monsters() {
     if (!world_->map_data) return;
+    const auto* store = ctx_ ? ctx_->biz_config() : nullptr;
     std::uint32_t camp_idx = 0;
     for (const auto& camp : world_->map_data->camps) {
-        const auto eid = world_->spawn_entity(EntityKind::Monster, 0, 0);
+        const auto* unit = (store && camp.unit_id != 0)
+            ? find_unit_row(*store, camp.unit_id) : nullptr;
+        const auto eid = world_->spawn_entity(EntityKind::Monster, camp.unit_id, 0);
         auto& e = world_->entities[eid];
         e.pos = camp.pos;
-        e.hp = kMonsterHp;
-        e.max_hp = kMonsterHp;
-        e.vision_range = kMonsterVision;
-        e.collision_radius = kMonsterCollisionRadius;
-        e.state_flags = 0x1;
+        e.hp = unit ? unit->max_hp() : kMonsterHp;
+        e.max_hp = e.hp;
+        e.vision_range = unit ? unit->vision_range() : kMonsterVision;
+        e.collision_radius = unit ? unit->collision_radius() : kMonsterCollisionRadius;
+        WorldState::mark_alive(e);
         auto& m = world_->monsters[eid];
         m.camp_id = camp_idx++;
         m.home_pos = camp.pos;
+        if (unit) {
+            m.attack = unit->physical_attack();
+            m.attack_range = unit->attack_range();
+            m.attack_interval_ticks = static_cast<std::uint32_t>(
+                (unit->attack_interval() > 0.f ? unit->attack_interval() : 1.f) * 60.f);
+            m.move_speed = unit->move_speed();
+            m.respawn_tick_default = static_cast<std::uint32_t>(
+                (unit->spawn_interval_ms() > 0 ? unit->spawn_interval_ms() : 50000) / kTickMs);
+        }
         world_->mark_monster_dirty(eid);   // 初始 Tier3 同步
-        BEAST_LOG_INFO("map spawn monster eid={} camp={} pos=({},{})", eid, camp.id, camp.pos.x, camp.pos.y);
+        BEAST_LOG_INFO(
+            "map spawn monster eid={} camp={} unit_id={} pos=({},{}) hp={} atk={} range={} speed={}",
+            eid, camp.id, camp.unit_id, camp.pos.x, camp.pos.y, e.max_hp, m.attack, m.attack_range, m.move_speed);
     }
 }
 
@@ -115,7 +141,7 @@ void MapSystem::spawn_towers() {
         e.max_hp = kTowerHp;
         e.vision_range = kTowerAtkRange;
         e.collision_radius = kTowerCollisionRadius;
-        e.state_flags = 0x1;
+        WorldState::mark_alive(e);
         auto& t = world_->towers[eid];
         t.lane = 0;
         t.tier = 0;
@@ -134,7 +160,7 @@ void MapSystem::spawn_bases() {
         e.hp = kBaseHp;
         e.max_hp = kBaseHp;
         e.collision_radius = kBaseCollisionRadius;
-        e.state_flags = 0x1;
+        WorldState::mark_alive(e);
         auto& t = world_->towers[eid];
         t.lane = 3;    // 3 = base(基地标记,同步走 TowerStateSync,客户端按 lane 区分渲染)
         t.tier = 0;
@@ -167,30 +193,33 @@ void MapSystem::monster_scan_aggro(
     }
 }
 
-void MapSystem::monster_follow_path(Entity& e, MonsterData& m, float /*dt_sec*/) {
+void MapSystem::monster_follow_path(Entity& e, MonsterData& m, float dt_sec) {
+    e.vel = {0.f, 0.f};
     if (m.path.empty() || m.path_idx >= m.path.size()) {
-        e.vel = {0.f, 0.f};
         return;
     }
+    const float speed = m.move_speed > 0.f ? m.move_speed : kMonsterSpeed;
     const Vec2f target = m.path[m.path_idx];
     const Vec2f diff = target - e.pos;
     const float dist_sq = diff.length_squared();
     if (dist_sq < kReachThresholdSq) {
         m.path_idx++;
         if (m.path_idx >= m.path.size()) {
-            e.vel = {0.f, 0.f};
             return;
         }
         const Vec2f next_diff = m.path[m.path_idx] - e.pos;
         const Vec2f dir = normalize_or_zero(next_diff);
-        e.vel = {dir.x * kMonsterSpeed, dir.y * kMonsterSpeed};
-        return;
+        e.vel = {dir.x * speed, dir.y * speed};
+    } else {
+        const Vec2f dir = normalize_or_zero(diff);
+        e.vel = {dir.x * speed, dir.y * speed};
     }
-    const Vec2f dir = normalize_or_zero(diff);
-    e.vel = {dir.x * kMonsterSpeed, dir.y * kMonsterSpeed};
+    // 真正位置积分(原 bug:只设 vel 不积分,野怪原地不动)
+    e.pos.x += e.vel.x * dt_sec;
+    e.pos.y += e.vel.y * dt_sec;
 }
 
-void MapSystem::tick_monster_ai(beast::platform::Tick tick) {
+void MapSystem::tick_monster_ai(beast::platform::Tick tick, float dt_sec) {
     if (!world_->map_data || !world_->map_data->nav_mesh) return;
     const auto& nav = *world_->map_data->nav_mesh;
 
@@ -204,7 +233,7 @@ void MapSystem::tick_monster_ai(beast::platform::Tick tick) {
             e.vel = {0.f, 0.f};
             if (m.respawn_tick > 0 && tick >= m.respawn_tick) {
                 e.hp = e.max_hp;
-                e.state_flags |= 0x1;
+                WorldState::mark_alive(e);
                 m.respawn_tick = 0;
                 m.ai_state = MonsterAIState::Idle;
                 m.path.clear();
@@ -214,13 +243,13 @@ void MapSystem::tick_monster_ai(beast::platform::Tick tick) {
             continue;
         }
 
-        // hp 归零 → Dead
+        // hp 归零 → Dead(apply_damage 已设 mark_dead,这里只清 AI 状态)
         if (e.hp <= 0) {
             e.hp = 0;
-            e.state_flags &= ~0x1;
+            WorldState::mark_dead(e);
             e.vel = {0.f, 0.f};
             m.ai_state = MonsterAIState::Dead;
-            m.respawn_tick = tick + kMonsterRespawnTicks;
+            m.respawn_tick = tick + (m.respawn_tick_default > 0 ? m.respawn_tick_default : kMonsterRespawnTicks);
             m.target_eid = 0;
             m.path.clear();
             world_->mark_monster_dirty(eid);   // 死亡
@@ -246,7 +275,8 @@ void MapSystem::tick_monster_ai(beast::platform::Tick tick) {
             const auto& target = target_it->second;
             const float dist_sq = (target.pos - e.pos).length_squared();
             // 进攻击范围 → Attack
-            if (dist_sq < kMonsterAtkRange * kMonsterAtkRange) {
+            const float atk_range = m.attack_range > 0.f ? m.attack_range : kMonsterAtkRange;
+            if (dist_sq < atk_range * atk_range) {
                 m.ai_state = MonsterAIState::Attack;
                 e.vel = {0.f, 0.f};
                 break;
@@ -267,7 +297,7 @@ void MapSystem::tick_monster_ai(beast::platform::Tick tick) {
                 m.path_idx = (m.path.empty() ? 0 : 1);
                 m.repath_tick = tick + kRepathInterval;
             }
-            monster_follow_path(e, m, 0.f);
+            monster_follow_path(e, m, dt_sec);
             break;
         }
         case MonsterAIState::Attack: {
@@ -282,7 +312,8 @@ void MapSystem::tick_monster_ai(beast::platform::Tick tick) {
             }
             const auto& target = target_it->second;
             const float dist_sq = (target.pos - e.pos).length_squared();
-            if (dist_sq > kMonsterAtkRange * kMonsterAtkRange) {
+            const float atk_range = m.attack_range > 0.f ? m.attack_range : kMonsterAtkRange;
+            if (dist_sq > atk_range * atk_range) {
                 m.ai_state = MonsterAIState::Aggro;
                 m.repath_tick = 0;
                 break;
@@ -290,11 +321,15 @@ void MapSystem::tick_monster_ai(beast::platform::Tick tick) {
             e.vel = {0.f, 0.f};
             // 攻击 CD
             if (tick >= m.attack_cd_tick) {
-                target_it->second.hp -= kMonsterAttack;
-                m.attack_cd_tick = tick + kAttackCdTicks;
-                if (target_it->second.hp <= 0) {
-                    target_it->second.hp = 0;
-                    target_it->second.state_flags &= ~0x1;
+                // 走统一伤害链路(apply_damage 处理死亡/复活/通知/奖励),
+                // 修复原 bug:怪物杀英雄走 hp-= 绕过 apply_damage 导致永久躺尸
+                combat_->apply_damage(eid, m.target_eid,
+                                      m.attack > 0 ? m.attack : kMonsterAttack,
+                                      /*damage_type=*/0, /*skill_id=*/0, tick);
+                m.attack_cd_tick = tick + (m.attack_interval_ticks > 0 ? m.attack_interval_ticks : kAttackCdTicks);
+                // apply_damage 已处理 target 死亡;怪物侧只需在 target 死后切 Return
+                auto t_after = world_->entities.find(m.target_eid);
+                if (t_after == world_->entities.end() || t_after->second.hp <= 0) {
                     m.target_eid = 0;
                     m.ai_state = MonsterAIState::Return;
                     m.repath_tick = 0;
@@ -323,7 +358,7 @@ void MapSystem::tick_monster_ai(beast::platform::Tick tick) {
                 m.path_idx = (m.path.empty() ? 0 : 1);
                 m.repath_tick = tick + kRepathInterval * 3;
             }
-            monster_follow_path(e, m, 0.f);
+            monster_follow_path(e, m, dt_sec);
             break;
         }
         case MonsterAIState::Dead:
@@ -335,6 +370,8 @@ void MapSystem::tick_monster_ai(beast::platform::Tick tick) {
 void MapSystem::tick_minions(beast::platform::Tick tick, beast::platform::TimestampMs dt_ms) {
     if (!world_->map_data || world_->map_data->lanes.empty()) return;
     const float dt_sec = static_cast<float>(dt_ms) / 1000.f;
+    const auto* store = ctx_ ? ctx_->biz_config() : nullptr;
+    const auto* minion_unit = store ? find_unit_row(*store, 2001) : nullptr;  // melee_minion
 
     // 刷波
     if (tick - last_minion_wave_tick_ >= kMinionWaveInterval || last_minion_wave_tick_ == 0) {
@@ -352,29 +389,69 @@ void MapSystem::tick_minions(beast::platform::Tick tick, beast::platform::Timest
                     }
                 }
                 for (std::uint32_t i = 0; i < kMinionsPerWave; ++i) {
-                    const auto eid = world_->spawn_entity(EntityKind::Minion, 0, team);
+                    const auto eid = world_->spawn_entity(EntityKind::Minion, 2001, team);
                     auto& e = world_->entities[eid];
                     e.pos = {spawn_pos.x + static_cast<float>(i) * 4.f, spawn_pos.y};
-                    e.hp = kMinionHp;
-                    e.max_hp = kMinionHp;
-                    e.collision_radius = kMinionCollisionRadius;
-                    e.state_flags = 0x1;
+                    e.hp = minion_unit ? minion_unit->max_hp() : kMinionHp;
+                    e.max_hp = e.hp;
+                    e.collision_radius = minion_unit ? minion_unit->collision_radius() : kMinionCollisionRadius;
+                    WorldState::mark_alive(e);
                     auto& md = world_->minions[eid];
                     md.lane = lane_idx;
                     // blue 从 path[0] 走到末尾;red 从末尾走到 0
                     md.path_idx = (team == 1) ? 0 : (lanes[lane_idx].path.size() > 0 ? lanes[lane_idx].path.size() - 1 : 0);
+                    if (minion_unit) {
+                        md.attack = minion_unit->physical_attack();
+                        md.attack_range = minion_unit->attack_range();
+                        md.attack_interval_ticks = static_cast<std::uint32_t>(
+                            (minion_unit->attack_interval() > 0.f ? minion_unit->attack_interval() : 1.5f) * 60.f);
+                    }
                 }
             }
         }
         BEAST_LOG_INFO("map minion wave spawned at tick={}", tick);
     }
 
-    // 移动
     for (auto& [eid, md] : world_->minions) {
         auto e_it = world_->entities.find(eid);
         if (e_it == world_->entities.end()) continue;
         auto& e = e_it->second;
         if (e.hp <= 0) continue;
+
+        // 攻击:扫描范围内敌方,优先 小兵 > 英雄 > 塔
+        if (md.attack > 0 && md.attack_range > 0.f && combat_) {
+            beast::platform::EntityId best_eid = 0;
+            float best_dist_sq = md.attack_range * md.attack_range;
+            int best_prio = 0;  // 3=minion > 2=hero > 1=tower
+            for (const auto& [oid, oe] : world_->entities) {
+                if (oid == eid || oe.hp <= 0) continue;
+                if (oe.team == e.team || oe.team == 0) continue;  // 仅敌方(team 不同且非 neutral)
+                if (oe.kind == EntityKind::Projectile || oe.kind == EntityKind::Field) continue;
+                const float dx = oe.pos.x - e.pos.x;
+                const float dy = oe.pos.y - e.pos.y;
+                const float d2 = dx * dx + dy * dy;
+                if (d2 > best_dist_sq) continue;
+                int prio = 1;
+                if (oe.kind == EntityKind::Minion) prio = 3;
+                else if (oe.kind == EntityKind::Hero) prio = 2;
+                if (prio > best_prio || (prio == best_prio && d2 < best_dist_sq)) {
+                    best_prio = prio;
+                    best_dist_sq = d2;
+                    best_eid = oid;
+                }
+            }
+            if (best_eid != 0) {
+                e.vel = {0.f, 0.f};
+                if (tick >= md.attack_cd_tick) {
+                    combat_->apply_damage(eid, best_eid, md.attack,
+                                          /*damage_type=*/0, /*skill_id=*/0, tick);
+                    md.attack_cd_tick = tick + (md.attack_interval_ticks > 0 ? md.attack_interval_ticks : kAttackCdTicks);
+                }
+                continue;  // 攻击中,不移动
+            }
+        }
+
+        // 移动
         if (md.lane >= world_->map_data->lanes.size()) continue;
         const auto& path = world_->map_data->lanes[md.lane].path;
         if (path.empty()) continue;
@@ -407,6 +484,21 @@ void MapSystem::tick_minions(beast::platform::Tick tick, beast::platform::Timest
     }
 }
 
+void MapSystem::update_bush_state() {
+    if (!world_ || !world_->map_data) return;
+    for (auto& [eid, e] : world_->entities) {
+        e.in_bush = false;
+        if (e.hp <= 0) continue;
+        for (const auto& bush : world_->map_data->bushes) {
+            if (e.pos.x >= bush.min.x && e.pos.x <= bush.max.x &&
+                e.pos.y >= bush.min.y && e.pos.y <= bush.max.y) {
+                e.in_bush = true;
+                break;
+            }
+        }
+    }
+}
+
 void MapSystem::tick_towers(beast::platform::Tick tick) {
     if (!world_ || !combat_ || world_->match_ended) return;
     for (auto& [tid, td] : world_->towers) {
@@ -415,9 +507,44 @@ void MapSystem::tick_towers(beast::platform::Tick tick) {
         if (e_it == world_->entities.end()) continue;
         auto& tower = e_it->second;
         // 跳过已摧毁塔
-        if (tower.hp <= 0 || (tower.state_flags & 0x100)) continue;
+        if (tower.hp <= 0 || WorldState::is_dead(tower)) continue;
         // CD 未到
         if (tick < td.attack_cd_tick) continue;
+
+        // 仇恨目标优先:英雄打英雄时塔锁定攻击者
+        beast::platform::EntityId aggro_target = 0;
+        if (td.aggro_expire_tick > 0 && tick < td.aggro_expire_tick) {
+            auto ag_it = world_->entities.find(td.aggro_target_eid);
+            if (ag_it != world_->entities.end() && ag_it->second.hp > 0 &&
+                ag_it->second.team != tower.team) {
+                const float dx = ag_it->second.pos.x - tower.pos.x;
+                const float dy = ag_it->second.pos.y - tower.pos.y;
+                if (dx * dx + dy * dy <= kTowerAtkRange * kTowerAtkRange) {
+                    aggro_target = td.aggro_target_eid;
+                }
+            }
+        } else {
+            td.aggro_target_eid = 0;
+            td.aggro_expire_tick = 0;
+        }
+
+        if (aggro_target != 0) {
+            combat_->apply_damage(tid, aggro_target, kTowerAttack, /*damage_type=*/0, /*skill_id=*/0, tick);
+            td.attack_cd_tick = tick + kTowerAtkIntervalTicks;
+            AttackNotify notify;
+            notify.set_tick(static_cast<std::uint32_t>(tick));
+            notify.set_attacker_entity_id(static_cast<std::uint32_t>(tid));
+            notify.set_target_entity_id(static_cast<std::uint32_t>(aggro_target));
+            if (ctx_ && world_) {
+                for (const auto& pid : ctx_->player_ids()) {
+                    if (world_->is_entity_visible_to_player(pid, tid) ||
+                        world_->is_entity_visible_to_player(pid, aggro_target)) {
+                        ctx_->send(pid, "pixelmoba.attacknotify", notify);
+                    }
+                }
+            }
+            continue;
+        }
 
         // 选目标:范围内最近敌方,优先小兵 > 英雄 > 野怪
         beast::platform::EntityId best_eid = 0;
@@ -452,7 +579,15 @@ void MapSystem::tick_towers(beast::platform::Tick tick) {
         notify.set_tick(static_cast<std::uint32_t>(tick));
         notify.set_attacker_entity_id(static_cast<std::uint32_t>(tid));
         notify.set_target_entity_id(static_cast<std::uint32_t>(best_eid));
-        if (ctx_) ctx_->broadcast("pixelmoba.attacknotify", notify);
+        // 按视野过滤:塔或目标对该玩家可见才发(替代 broadcast 全房广播)
+        if (ctx_ && world_) {
+            for (const auto& pid : ctx_->player_ids()) {
+                if (world_->is_entity_visible_to_player(pid, tid) ||
+                    world_->is_entity_visible_to_player(pid, best_eid)) {
+                    ctx_->send(pid, "pixelmoba.attacknotify", notify);
+                }
+            }
+        }
     }
 }
 
