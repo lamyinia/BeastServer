@@ -144,6 +144,7 @@ void PixelMobaEngine::broadcast_transform() {
         if (e.kind == EntityKind::Tower || e.kind == EntityKind::Projectile || e.kind == EntityKind::Field) continue; // 塔/飞行物/区域走其他路
         auto* a = full.add_actors();
         a->set_entity_id(static_cast<std::uint32_t>(e.entity_id));
+        a->set_unit_id(e.unit_id);
         a->set_team(e.team);
         a->mutable_pos()->set_x(e.pos.x);
         a->mutable_pos()->set_y(e.pos.y);
@@ -165,27 +166,13 @@ void PixelMobaEngine::broadcast_transform() {
         }
     }
 
-    // 按玩家视野裁剪单播
+    // 按玩家视野裁剪单播:用 is_entity_visible_to_player 统一可见性规则
+    // (含同队英雄视野共享、草丛遮蔽、死亡敌方不可见等),替代手动 AOI query
     for (const auto& pid : ctx_->player_ids()) {
-        std::unordered_set<beast::platform::EntityId> visible;
-        const auto pe_it = world_.player_entities.find(pid);
-        if (pe_it != world_.player_entities.end()) {
-            const auto self_eid = pe_it->second;
-            visible.insert(self_eid);
-            const auto e_it = world_.entities.find(self_eid);
-            if (e_it != world_.entities.end()) {
-                const auto& hero = e_it->second;
-                const float vision = hero.vision_range > 0.f ? hero.vision_range : 256.f;
-                for (auto nid : world_.aoi_grid.query_radius(hero.pos, vision)) {
-                    visible.insert(nid);
-                }
-            }
-        }
-
         TransformSync per;
         per.set_tick(static_cast<std::uint32_t>(tick_));
         for (const auto& a : full.actors()) {
-            if (visible.count(static_cast<beast::platform::EntityId>(a.entity_id())) != 0) {
+            if (world_.is_entity_visible_to_player(pid, static_cast<beast::platform::EntityId>(a.entity_id()))) {
                 *per.add_actors() = a;
             }
         }
@@ -215,26 +202,12 @@ void PixelMobaEngine::broadcast_projectiles() {
     }
     if (full.projectiles().empty()) return;
 
+    // 按玩家视野裁剪单播:用 is_entity_visible_to_player(按距离判定,飞行物 hp=0 不进 AOI grid)
     for (const auto& pid : ctx_->player_ids()) {
-        std::unordered_set<beast::platform::EntityId> visible;
-        const auto pe_it = world_.player_entities.find(pid);
-        if (pe_it != world_.player_entities.end()) {
-            const auto self_eid = pe_it->second;
-            visible.insert(self_eid);
-            const auto e_it = world_.entities.find(self_eid);
-            if (e_it != world_.entities.end()) {
-                const auto& hero = e_it->second;
-                const float vision = hero.vision_range > 0.f ? hero.vision_range : 256.f;
-                for (auto nid : world_.aoi_grid.query_radius(hero.pos, vision)) {
-                    visible.insert(nid);
-                }
-            }
-        }
-
         ProjectileSync per;
         per.set_tick(static_cast<std::uint32_t>(tick_));
         for (const auto& p : full.projectiles()) {
-            if (visible.count(static_cast<beast::platform::EntityId>(p.entity_id())) != 0) {
+            if (world_.is_entity_visible_to_player(pid, static_cast<beast::platform::EntityId>(p.entity_id()))) {
                 *per.add_projectiles() = p;
             }
         }
@@ -343,6 +316,7 @@ void PixelMobaEngine::broadcast_tower_dirty() {
         msg.set_state_flags(e.state_flags);
         msg.mutable_pos()->set_x(e.pos.x);
         msg.mutable_pos()->set_y(e.pos.y);
+        msg.set_unit_id(e.unit_id);
         ctx_->broadcast("pixelmoba.tower", msg);
     }
     world_.tower_dirty.clear();
@@ -364,8 +338,28 @@ void PixelMobaEngine::broadcast_monster_dirty() {
         msg.set_state_flags(e.state_flags);
         // 按视野过滤:野怪营地对该玩家可见(任一同队英雄视野内有野怪)才发,
         // 避免野怪刷新时间泄露给敌方(抢龙/反野关键信息)
+        // 死亡野怪用死亡位置判定视野(is_entity_visible_to_player 对死亡实体返回 false,
+        // 但 respawn_tick 是抢龙关键信息,死亡时必须发给当时有视野的玩家)
         for (const auto& pid : ctx_->player_ids()) {
-            if (world_.is_entity_visible_to_player(pid, eid)) {
+            bool visible = false;
+            if (!WorldState::is_dead(e)) {
+                visible = world_.is_entity_visible_to_player(pid, eid);
+            } else {
+                const auto pe = world_.player_entities.find(pid);
+                if (pe != world_.player_entities.end()) {
+                    auto self_it = world_.entities.find(pe->second);
+                    if (self_it != world_.entities.end() && self_it->second.hp > 0) {
+                        const auto& self = self_it->second;
+                        const float dx = self.pos.x - e.pos.x;
+                        const float dy = self.pos.y - e.pos.y;
+                        const float vision = self.vision_range > 0.f ? self.vision_range : 256.f;
+                        if (dx * dx + dy * dy < vision * vision) {
+                            visible = true;
+                        }
+                    }
+                }
+            }
+            if (visible) {
                 ctx_->send(pid, "pixelmoba.monstercamp", msg);
             }
         }
@@ -517,6 +511,7 @@ void PixelMobaEngine::send_reconnect_snapshot(const beast::platform::PlayerId& p
         msg.set_state_flags(e.state_flags);
         msg.mutable_pos()->set_x(e.pos.x);
         msg.mutable_pos()->set_y(e.pos.y);
+        msg.set_unit_id(e.unit_id);
         ctx_->send(player_id, "pixelmoba.tower", msg);
     }
 

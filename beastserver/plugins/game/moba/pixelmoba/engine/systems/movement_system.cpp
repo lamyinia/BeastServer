@@ -30,7 +30,7 @@ void MovementSystem::on_start(
 }
 
 void MovementSystem::tick(beast::platform::Tick /*tick*/, beast::platform::TimestampMs dt_ms) {
-    if (!world_) return;
+    if (!world_ || !world_->match_started || world_->match_ended) return;
     const float dt_sec = static_cast<float>(dt_ms) / 1000.f;
     // 仅积分英雄位置;小兵/野怪在 MapSystem 内自行积分以精确贴合路径点。
     // 两阶段碰撞:Phase 1 墙体滑墙 + 边界;Phase 2 实体间碰撞(双方推开,避免单方面撞不动)。
@@ -52,6 +52,20 @@ void MovementSystem::tick(beast::platform::Tick /*tick*/, beast::platform::Times
             continue;
         }
         if (!hero.move_path.empty()) {
+            // 动态障碍失效:PersistentFieldSkill 撞墙后缓存路径若被覆盖,则触发重算。
+            // 避免英雄走到墙边卡住才停(P0 修复配套:find_path 现在考虑动态障碍)。
+            if (hero.move_path_idx < hero.move_path.size()
+                && world_->map_data && world_->map_data->nav_mesh
+                && world_->map_data->nav_mesh->is_path_blocked_by_dynamic(hero.move_path)) {
+                const Vec2f goal = hero.move_path.back();
+                auto new_path = world_->map_data->nav_mesh->find_path(e.pos, goal, /*include_dynamic=*/true);
+                if (new_path.empty()) {
+                    stop_movement(e, hero);
+                } else {
+                    hero.move_path = std::move(new_path);
+                    hero.move_path_idx = 0;
+                }
+            }
             follow_path_velocity(e, hero);
         }
         Vec2f new_pos{e.pos.x + e.vel.x * dt_sec, e.pos.y + e.vel.y * dt_sec};

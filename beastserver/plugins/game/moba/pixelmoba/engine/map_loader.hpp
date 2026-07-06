@@ -36,6 +36,9 @@ struct TowerConfigData {
     std::string id;
     std::string team;  // blue/red
     Vec2f pos{};       // 塔中心(像素)
+    std::uint32_t unit_id{0};  // 外键 → unit.id
+    std::uint32_t lane{0};     // 0 top / 1 mid / 2 bot
+    std::uint32_t tier{0};     // 0 外塔 / 1 内塔 / 2 水晶
 };
 
 struct BushData {

@@ -140,6 +140,9 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
           shared_session_manager_,
           shared_outbound_hub_)
     , grpc_server_(config_.grpc.port)
+    , etcd_monitor_(std::make_unique<discovery::EtcdMonitor>(
+          config_.etcd, config_.node_id,
+          []() { return discovery::LoadStats{}; }))
     , instance_manager_(config_.runtime, shared_outbound_hub_.get())
     , timer_service_(config_.runtime.timer_wheel, &instance_manager_)
     , event_bridge_(
@@ -266,6 +269,8 @@ void GameServer::start() {
         BEAST_LOG_ERROR("GameServer gRPC start failed on port {}", config_.grpc.port);
     }
 
+    etcd_monitor_->start();
+
     running_ = true;
     BEAST_LOG_INFO(
         "GameServer ready tcp_port={} kcp_port={} grpc_port={} gameplay_count={}",
@@ -281,6 +286,7 @@ void GameServer::stop() {
     }
 
     BEAST_LOG_INFO("GameServer stopping");
+    etcd_monitor_->stop();
     grpc_server_.stop();
     if (kcp_server_) {
         kcp_server_->stop();

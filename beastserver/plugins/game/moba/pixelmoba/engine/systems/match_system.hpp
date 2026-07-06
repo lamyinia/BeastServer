@@ -51,6 +51,10 @@ private:
     void create_hero_entities();
     void revive_heroes();
     [[nodiscard]] std::uint32_t player_index(const beast::platform::PlayerId& pid) const;
+
+    // 对局结束后延迟销毁:给客户端 N 秒看结算/动画,再 notify_instance_end 释放资源
+    static constexpr std::uint32_t kEndDestroyDelayTicks = 300;  // 5s @ 60Hz
+    bool end_notified_{false};   // 防止重复调用 notify_instance_end
 };
 
 } // namespace beast::moba::pixel

@@ -134,7 +134,7 @@ void MapSystem::spawn_towers() {
     if (!world_->map_data) return;
     for (const auto& tc : world_->map_data->towers) {
         const std::uint32_t team = (tc.team == "blue") ? 1 : 2;
-        const auto eid = world_->spawn_entity(EntityKind::Tower, 0, team);
+        const auto eid = world_->spawn_entity(EntityKind::Tower, tc.unit_id, team);
         auto& e = world_->entities[eid];
         e.pos = tc.pos;
         e.hp = kTowerHp;
@@ -143,8 +143,8 @@ void MapSystem::spawn_towers() {
         e.collision_radius = kTowerCollisionRadius;
         WorldState::mark_alive(e);
         auto& t = world_->towers[eid];
-        t.lane = 0;
-        t.tier = 0;
+        t.lane = tc.lane;
+        t.tier = tc.tier;
         world_->mark_tower_dirty(eid);   // 初始 Tier3 同步
         BEAST_LOG_INFO("map spawn tower eid={} id={} team={} pos=({},{})", eid, tc.id, team, tc.pos.x, tc.pos.y);
     }
@@ -154,7 +154,7 @@ void MapSystem::spawn_bases() {
     if (!world_->map_data) return;
     for (const auto& b : world_->map_data->bases) {
         const std::uint32_t team = (b.team == "blue") ? 1 : 2;
-        const auto eid = world_->spawn_entity(EntityKind::Tower, 0, team);
+        const auto eid = world_->spawn_entity(EntityKind::Tower, 3500 + team, team);
         auto& e = world_->entities[eid];
         e.pos = b.core_pos;
         e.hp = kBaseHp;
@@ -320,7 +320,7 @@ void MapSystem::tick_monster_ai(beast::platform::Tick tick, float dt_sec) {
             }
             e.vel = {0.f, 0.f};
             // 攻击 CD
-            if (tick >= m.attack_cd_tick) {
+            if (tick >= m.attack_cd_tick && combat_ != nullptr) {
                 // 走统一伤害链路(apply_damage 处理死亡/复活/通知/奖励),
                 // 修复原 bug:怪物杀英雄走 hp-= 绕过 apply_damage 导致永久躺尸
                 combat_->apply_damage(eid, m.target_eid,
@@ -373,8 +373,9 @@ void MapSystem::tick_minions(beast::platform::Tick tick, beast::platform::Timest
     const auto* store = ctx_ ? ctx_->biz_config() : nullptr;
     const auto* minion_unit = store ? find_unit_row(*store, 2001) : nullptr;  // melee_minion
 
-    // 刷波
-    if (tick - last_minion_wave_tick_ >= kMinionWaveInterval || last_minion_wave_tick_ == 0) {
+    // 刷波:首波用 first_wave_spawned_ 标志触发(避免 tick=0 时 last==0 条件二次成立导致双刷)
+    if (!first_wave_spawned_ || tick - last_minion_wave_tick_ >= kMinionWaveInterval) {
+        first_wave_spawned_ = true;
         last_minion_wave_tick_ = tick;
         const auto& lanes = world_->map_data->lanes;
         for (std::uint32_t lane_idx = 0; lane_idx < lanes.size(); ++lane_idx) {
@@ -421,7 +422,8 @@ void MapSystem::tick_minions(beast::platform::Tick tick, beast::platform::Timest
         // 攻击:扫描范围内敌方,优先 小兵 > 英雄 > 塔
         if (md.attack > 0 && md.attack_range > 0.f && combat_) {
             beast::platform::EntityId best_eid = 0;
-            float best_dist_sq = md.attack_range * md.attack_range;
+            const float range_sq = md.attack_range * md.attack_range;  // 射程上限(常量,不随目标更新)
+            float best_dist_sq = range_sq;  // 同优先级最近距离(仅用于比较,不污染射程过滤)
             int best_prio = 0;  // 3=minion > 2=hero > 1=tower
             for (const auto& [oid, oe] : world_->entities) {
                 if (oid == eid || oe.hp <= 0) continue;
@@ -430,7 +432,7 @@ void MapSystem::tick_minions(beast::platform::Tick tick, beast::platform::Timest
                 const float dx = oe.pos.x - e.pos.x;
                 const float dy = oe.pos.y - e.pos.y;
                 const float d2 = dx * dx + dy * dy;
-                if (d2 > best_dist_sq) continue;
+                if (d2 > range_sq) continue;  // 用独立 range_sq 做射程过滤,不被 best_dist_sq 污染
                 int prio = 1;
                 if (oe.kind == EntityKind::Minion) prio = 3;
                 else if (oe.kind == EntityKind::Hero) prio = 2;
@@ -548,7 +550,8 @@ void MapSystem::tick_towers(beast::platform::Tick tick) {
 
         // 选目标:范围内最近敌方,优先小兵 > 英雄 > 野怪
         beast::platform::EntityId best_eid = 0;
-        float best_dist_sq = kTowerAtkRange * kTowerAtkRange;
+        const float range_sq = kTowerAtkRange * kTowerAtkRange;  // 射程上限(常量)
+        float best_dist_sq = range_sq;  // 同优先级最近距离(仅用于比较)
         int best_priority = 0;   // 3=minion > 2=hero > 1=monster
         for (const auto& [oid, oe] : world_->entities) {
             if (oid == tid) continue;
@@ -558,7 +561,7 @@ void MapSystem::tick_towers(beast::platform::Tick tick) {
             const float dx = oe.pos.x - tower.pos.x;
             const float dy = oe.pos.y - tower.pos.y;
             const float d2 = dx * dx + dy * dy;
-            if (d2 > best_dist_sq) continue;
+            if (d2 > range_sq) continue;  // 用独立 range_sq 做射程过滤
             int prio = 1;
             if (oe.kind == EntityKind::Minion) prio = 3;
             else if (oe.kind == EntityKind::Hero) prio = 2;

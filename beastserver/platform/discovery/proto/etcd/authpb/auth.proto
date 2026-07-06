@@ -1,0 +1,140 @@
+syntax = "proto3";
+package authpb;
+
+option go_package = "go.etcd.io/etcd/api/v3/authpb";
+
+message AuthEnableRequest {
+}
+
+message AuthDisableRequest {
+}
+
+message AuthStatusRequest {
+}
+
+message AuthenticateRequest {
+  string name = 1;
+  string password = 2;
+}
+
+message AuthUserAddRequest {
+  string name = 1;
+  string password = 2;
+  repeated string roles = 3;
+  bool no_password = 4;
+}
+
+message AuthUserDeleteRequest {
+  string name = 1;
+}
+
+message AuthUserChangePasswordRequest {
+  string name = 1;
+  string password = 2;
+}
+
+message AuthUserGrantRoleRequest {
+  string name = 1;
+  string role = 2;
+}
+
+message AuthUserRevokeRoleRequest {
+  string name = 1;
+  string role = 2;
+}
+
+message AuthRoleAddRequest {
+  string name = 1;
+}
+
+message AuthRoleDeleteRequest {
+  string role = 1;
+}
+
+message AuthRoleGrantPermissionRequest {
+  string name = 1;
+  Permission perm = 2;
+}
+
+message AuthRoleRevokePermissionRequest {
+  string role = 1;
+  string key = 2;
+  string range_end = 3;
+}
+
+message AuthUserGetRequest {
+  string name = 1;
+}
+
+message AuthRoleGetRequest {
+  string role = 1;
+}
+
+message AuthUserListRequest {
+}
+
+message AuthRoleListRequest {
+}
+
+message Permission {
+  enum Type {
+    READ = 0;
+    WRITE = 1;
+    READWRITE = 2;
+  }
+  Type perm_type = 1;
+  bytes key = 2;
+  bytes range_end = 3;
+}
+
+message AuthenticateResponse {
+  string token = 1;
+}
+
+message AuthUserAddResponse {
+}
+
+message AuthUserDeleteResponse {
+}
+
+message AuthUserChangePasswordResponse {
+}
+
+message AuthUserGrantRoleResponse {
+}
+
+message AuthUserRevokeRoleResponse {
+}
+
+message AuthRoleAddResponse {
+}
+
+message AuthRoleDeleteResponse {
+}
+
+message AuthRoleGrantPermissionResponse {
+}
+
+message AuthRoleRevokePermissionResponse {
+}
+
+message AuthUserGetResponse {
+  repeated string roles = 1;
+}
+
+message AuthRoleGetResponse {
+  repeated Permission perm = 1;
+}
+
+message AuthUserListResponse {
+  repeated string users = 1;
+}
+
+message AuthRoleListResponse {
+  repeated string roles = 1;
+}
+
+message AuthStatusResponse {
+  bool enabled = 1;
+  string auth_revision = 2;
+}

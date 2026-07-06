@@ -43,6 +43,7 @@ message TransformEntry {
   uint32 state_flags = 7;
   uint32 target_entity_id = 8;
   AnimationState animation = 9;                     // 非idle时填,idle不填(proto3 默认不序列化)
+  uint32 unit_id = 10;                              // 外键 → unit.id;英雄=hero_id/小兵=2001/野怪=400x
 }
 
 // 非空闲动画状态(仅 animate_id != 0 时下发;idle/平A/run 由客户端自行处理)。
@@ -129,6 +130,7 @@ message TowerStateSync {
   int32 max_hp = 6;
   uint32 state_flags = 7;                           // bit0 alive / bit8 destroyed
   beast.moba.common.Vec2 pos = 8;
+  uint32 unit_id = 9;                               // 外键 → unit.id;塔=3000+team / 基地=3500+team(约定)
 }
 
 // route:MonsterCampSync|s2c|pixelmoba.monstercamp

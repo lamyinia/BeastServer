@@ -51,6 +51,7 @@ void parse_etcd_register(const nlohmann::json& reg, EtcdRegisterConfig& out) {
 }
 
 void parse_etcd(const nlohmann::json& etcd, EtcdConfig& out) {
+    assign_if_present(etcd, "enabled", out.enabled);
     assign_if_present(etcd, "endpoints", out.endpoints);
     assign_if_present(etcd, "ttl_seconds", out.ttl_seconds);
     assign_if_present(etcd, "report_interval_seconds", out.report_interval_seconds);

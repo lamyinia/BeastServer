@@ -8,6 +8,9 @@ message MapTowerRowServer {
     string tower_id = 2;
     string team = 3;
     string rect = 4;
+    uint32 unit_id = 5;
+    uint32 lane = 6;
+    uint32 tier = 7;
 }
 
 message MapTowerServerConfig {
@@ -19,6 +22,9 @@ message MapTowerRowClient {
     string tower_id = 2;
     string team = 3;
     string rect = 4;
+    uint32 unit_id = 5;
+    uint32 lane = 6;
+    uint32 tier = 7;
 }
 
 message MapTowerClientConfig {

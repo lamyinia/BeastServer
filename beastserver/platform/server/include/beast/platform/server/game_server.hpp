@@ -13,6 +13,7 @@
 #include "beast/platform/net/server/kcp_server.hpp"
 #include "beast/platform/net/server/tcp_server.hpp"
 #include "beast/platform/rpc/grpc_server.hpp"
+#include "beast/platform/discovery/etcd_monitor.hpp"
 #include "beast/platform/server/room_service_grpc.hpp"
 #include "beast/platform/server/room_service.hpp"
 
@@ -87,6 +88,7 @@ private:
     net::server::TcpServer tcp_server_;
     std::unique_ptr<net::server::KcpServer> kcp_server_;
     rpc::GrpcServer grpc_server_;
+    std::unique_ptr<discovery::EtcdMonitor> etcd_monitor_;
     engine::instance::InstanceManager instance_manager_;
     engine::timer::TimerService timer_service_;
     engine::dispatch::PlayerInstanceRegistry player_registry_;

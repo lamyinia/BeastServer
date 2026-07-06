@@ -163,7 +163,7 @@ void EconomySystem::on_start(
 }
 
 void EconomySystem::tick(beast::platform::Tick tick, beast::platform::TimestampMs /*dt_ms*/) {
-    if (!world_ || world_->match_ended) return;
+    if (!world_ || !world_->match_started || world_->match_ended) return;
 
     // 每 30 tick(0.5s)应用一次 regen + 被动金币,降低 AttrSync 流量
     // (60Hz 每 tick 改 hp/mana/gold + mark_attr_dirty 流量过大,0.5s 一次客户端体感无差别)

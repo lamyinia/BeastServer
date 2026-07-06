@@ -72,6 +72,20 @@ std::optional<std::pair<int, int>> parse_point(const std::string& s) {
 
 std::vector<std::pair<int, int>> parse_path(const std::string& s) {
     std::vector<std::pair<int, int>> result;
+
+    // JSON 数组格式:[[x,y],[x,y],...] — 去掉所有 [] 后按逗号解析,每 2 个数组成 1 个点
+    if (!s.empty() && s.front() == '[') {
+        std::string cleaned = s;
+        cleaned.erase(std::remove(cleaned.begin(), cleaned.end(), '['), cleaned.end());
+        cleaned.erase(std::remove(cleaned.begin(), cleaned.end(), ']'), cleaned.end());
+        const auto nums = parse_ints(cleaned, ',');
+        for (std::size_t i = 0; i + 1 < nums.size(); i += 2) {
+            result.emplace_back(nums[i], nums[i + 1]);
+        }
+        return result;
+    }
+
+    // 旧格式:x,y;x,y;...
     std::string token;
     std::istringstream iss(s);
     while (std::getline(iss, token, ';')) {
@@ -266,6 +280,9 @@ std::shared_ptr<MapData> load_map(
             TowerConfigData tower;
             tower.id = row.tower_id();
             tower.team = row.team();
+            tower.unit_id = row.unit_id();
+            tower.lane = row.lane();
+            tower.tier = row.tier();
             const auto r = parse_rect(row.rect());
             if (r) {
                 tower.pos = tile_to_pixel(r->x + r->w / 2, r->y + r->h / 2);

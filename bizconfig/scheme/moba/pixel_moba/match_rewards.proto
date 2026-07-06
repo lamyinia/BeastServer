@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.match_rewards;
+option go_package = "beast.biz.moba.pixel_moba.match_rewards";
+
+message MatchRewardsRowServer {
+    uint32 id = 1;
+    int32 kill_gold = 2;
+    int32 kill_exp = 3;
+    float assist_gold_pct = 4;
+    int32 tower_destroy_gold = 5;
+    int32 tower_destroy_exp = 6;
+    float passive_gold_per_sec = 7;
+    int32 minion_kill_bonus_gold = 8;
+}
+
+message MatchRewardsServerConfig {
+    repeated MatchRewardsRowServer rows = 1;
+}
+
+message MatchRewardsRowClient {
+}
+
+message MatchRewardsClientConfig {
+    repeated MatchRewardsRowClient rows = 1;
+}

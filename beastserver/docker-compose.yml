@@ -1,0 +1,36 @@
+# 开发环境编排:etcd(服务发现)+ mongodb(持久化)。
+# beastserver 本地编译跑(Conan+CMake 构建环境复杂,不放进 docker)。
+#
+# 启动:docker compose up -d
+# 停止:docker compose down
+# 查 etcd key:docker compose exec etcd etcdctl --endpoints=http://127.0.0.1:2379 get game/v1/ --prefix
+# 清数据:docker compose down -v
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.15
+    container_name: beast-etcd
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    command: >
+      etcd
+      --advertise-client-urls http://0.0.0.0:2379
+      --listen-client-urls http://0.0.0.0:2379
+      --data-dir /etcd-data
+    volumes:
+      - etcd-data:/etcd-data
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    container_name: beast-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+volumes:
+  etcd-data:
+  mongo-data:

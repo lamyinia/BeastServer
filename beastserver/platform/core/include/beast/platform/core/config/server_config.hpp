@@ -62,6 +62,7 @@ struct EtcdRegisterConfig {
 };
 
 struct EtcdConfig {
+    bool enabled{true};
     std::string endpoints{"http://127.0.0.1:2379"};
     std::int64_t ttl_seconds{10};
     std::int64_t report_interval_seconds{5};

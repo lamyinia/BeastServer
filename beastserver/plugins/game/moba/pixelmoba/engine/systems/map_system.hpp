@@ -23,6 +23,7 @@ private:
     WorldState* world_{nullptr};
     CombatSystem* combat_{nullptr};
     beast::platform::Tick last_minion_wave_tick_{0};
+    bool first_wave_spawned_{false};   // 防止 tick=0 时首波双刷(last_minion_wave_tick_==0 条件二次成立)
 
     void spawn_monsters();
     void spawn_towers();

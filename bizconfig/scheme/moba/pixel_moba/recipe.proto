@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package beast.biz.moba.pixel_moba.recipe;
+option go_package = "beast.biz.moba.pixel_moba.recipe";
+
+message RecipeRowServer {
+    uint32 id = 1;
+    string component_item_ids = 2;
+    int32 build_cost = 3;
+}
+
+message RecipeServerConfig {
+    repeated RecipeRowServer rows = 1;
+}
+
+message RecipeRowClient {
+}
+
+message RecipeClientConfig {
+    repeated RecipeRowClient rows = 1;
+}

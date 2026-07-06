@@ -32,6 +32,19 @@ void MatchSystem::tick(beast::platform::Tick tick, beast::platform::TimestampMs 
     if (world_ && world_->match_started) {
         revive_heroes();
     }
+    // 对局结束后延迟销毁实例:match_ended 后给客户端 5s 看结算/动画,再通知平台层回收资源
+    // (instance/carrier/player_registry/session binding 全部由 notify_instance_end 触发清理)
+    if (world_ && world_->match_ended && !end_notified_) {
+        if (tick - world_->match_end_tick >= kEndDestroyDelayTicks) {
+            end_notified_ = true;
+            if (ctx_) {
+                ctx_->notify_instance_end();
+                BEAST_LOG_INFO(
+                    "match end: notify_instance_end after {} ticks delay (tick={})",
+                    kEndDestroyDelayTicks, tick);
+            }
+        }
+    }
 }
 
 std::uint32_t MatchSystem::player_index(const beast::platform::PlayerId& pid) const {
@@ -243,7 +256,12 @@ void MatchSystem::consume(const beast::platform::PlayerId& player_id, const Load
         state_ = MatchState::Playing;
         world_->match_started = true;
         world_->match_start_tick = current_tick_;   // 记录开始 tick,用于算 MatchEndNotify.duration_sec
-        BEAST_LOG_INFO("match transition Loading->Playing: match started");
+        // 塔 dirty 重发:on_start 首包在 lobby 发出已清,进 Playing 客户端就绪需补发(RFC-011)
+        for (const auto& [eid, t] : world_->towers) {
+            (void)t;
+            world_->mark_tower_dirty(eid);
+        }
+        BEAST_LOG_INFO("match transition Loading->Playing: match started (towers re-marked dirty)");
     }
 }
 

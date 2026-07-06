@@ -516,8 +516,9 @@ std::int32_t CombatSystem::apply_damage(
                 is_critical = true;
                 damage = static_cast<std::int32_t>(damage * c_it->second.crit_damage);
             } else {
-                // 简化:用 tick 作种子的小 LCG 判定,避免引入 RNG 依赖
-                const float roll = ((tick * 2654435761u) % 10000) / 10000.f;
+                // 简化:用 tick + caster_eid 作种子的小 LCG 判定,避免引入 RNG 依赖
+                // 混入 caster_eid 确保同一 tick 内不同攻击者独立判定暴击
+                const float roll = (((tick * 2654435761u) ^ (static_cast<std::uint32_t>(caster_eid) * 40503u)) % 10000) / 10000.f;
                 if (roll < c_it->second.crit_rate) {
                     is_critical = true;
                     damage = static_cast<std::int32_t>(damage * c_it->second.crit_damage);
@@ -528,6 +529,11 @@ std::int32_t CombatSystem::apply_damage(
 
     target.hp -= damage;
     if (target.hp < 0) target.hp = 0;
+
+    // 塔 hp 变化(非致命)标记 dirty:客户端需看到塔 hp 递减过程(致命时摧毁分支也会标记)
+    if (target.kind == EntityKind::Tower && target.hp > 0) {
+        world_->mark_tower_dirty(target_eid);
+    }
 
     // 塔仇恨 + 草丛暴露:英雄打英雄 → 附近同队塔锁定攻击者,攻击者被暴露 2s
     if (target.kind == EntityKind::Hero) {
@@ -645,6 +651,8 @@ std::int32_t CombatSystem::apply_damage(
         } else if (target.kind == EntityKind::Tower) {
             world_->set_animation(target_eid, kDeathAnimId, /*duration_ms=*/0);
             world_->mark_tower_dirty(target_eid);   // 塔摧毁同步
+            // 非致命伤害也标记 dirty:客户端需看到塔 hp 递减过程(否则满血→突然摧毁)
+            // mark_tower_dirty 在下方 hp 变化通用路径统一处理,此处仅摧毁分支
             // 塔摧毁奖励:给击杀者金币 + 经验(读 match_rewards,缺失兜底 150/50)
             auto c_it = world_->heroes.find(caster_eid);
             if (c_it != world_->heroes.end()) {
@@ -660,6 +668,7 @@ std::int32_t CombatSystem::apply_damage(
             auto t_it = world_->towers.find(target_eid);
             if (t_it != world_->towers.end() && t_it->second.lane == 3 && !world_->match_ended) {
                 world_->match_ended = true;
+                world_->match_end_tick = tick;   // 记录结束 tick,供 MatchSystem 延迟销毁倒计时
                 const std::uint32_t winner = (target.team == 1) ? 2 : 1;   // 对方队伍胜
                 const std::uint32_t duration_sec = static_cast<std::uint32_t>(
                     (tick - world_->match_start_tick) / 60);
@@ -1117,14 +1126,19 @@ void CombatSystem::add_exp_to_hero(
     // 升级循环:只要 exp 够且未到 max_level 就升
     std::vector<std::uint32_t> new_levels;
     while (h.level < h.max_level) {
-        const auto* row = find_level_bonus_row(e.unit_id, h.level);
-        if (row == nullptr) break;   // 表缺该级数据,无法继续升级
-        const std::int32_t need = row->exp_to_next();
+        // 查当前等级的 row,取 exp_to_next 判断是否可升级
+        const auto* cur_row = find_level_bonus_row(e.unit_id, h.level);
+        if (cur_row == nullptr) break;   // 表缺该级数据,无法继续升级
+        const std::int32_t need = cur_row->exp_to_next();
         if (need <= 0 || h.exp < need) break;
         h.exp -= need;
         h.level++;
-        h.skill_point += static_cast<std::uint32_t>(row->skill_point());
-        apply_level_bonus_increment(h, *row);
+        // 升级后查新等级的 row,应用属性增量和技能点(避免重复应用当前级 row)
+        const auto* new_row = find_level_bonus_row(e.unit_id, h.level);
+        if (new_row != nullptr) {
+            h.skill_point += static_cast<std::uint32_t>(new_row->skill_point());
+            apply_level_bonus_increment(h, *new_row);
+        }
         // max_hp/max_mana 由 recompute_hero_stats 聚合(base + level_bonus + equip)
         new_levels.push_back(h.level);
     }

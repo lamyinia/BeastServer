@@ -327,6 +327,7 @@ struct WorldState {
     bool match_started{false};
     bool match_ended{false};
     beast::platform::Tick match_start_tick{0};   // 对局开始 tick,用于算 MatchEndNotify.duration_sec
+    beast::platform::Tick match_end_tick{0};     // match_ended 设置时的 tick,供 MatchSystem 倒计时延迟销毁
 
     // 当前 tick:engine on_tick 开头设置,供 System::consume 在 dispatch_input 阶段读取
     // (System.tick 在 dispatch 之后调用,此时 System 自身 tick_ 还是上一帧值)。

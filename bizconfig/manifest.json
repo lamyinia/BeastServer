@@ -1,0 +1,163 @@
+{
+  "version": "20260703.190722",
+  "tables": {
+    "example/npc": {
+      "file": "example/npc_s.pb",
+      "client_file": "example/npc_c.pb",
+      "schema": "beast.biz.example.npc.NpcServerConfig",
+      "client_schema": "beast.biz.example.npc.NpcClientConfig",
+      "row_count": 3,
+      "sha256": "7f77955fc4d663731ab20fa8f08dcfa3ea3d0c3a268bb49014b2f07f2d607dd1",
+      "client_sha256": "53a22ad7a12249b7ccbfb1b9926d7bc828d3c882df2bef029422582ab9e5f334"
+    },
+    "moba/pixel_moba/effect": {
+      "file": "moba/pixel_moba/effect_s.pb",
+      "client_file": "moba/pixel_moba/effect_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.effect.EffectServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.effect.EffectClientConfig",
+      "row_count": 10,
+      "sha256": "597a3dc6540b35e56c1ca957a31fac56b4d940eb102273ee5244f0d0f82d33f0",
+      "client_sha256": "fb3fee7022b7af12e37e399a5cd9d5b75def3c00955ffc7e17c5ca37c14cc7f5"
+    },
+    "moba/pixel_moba/hero_level_bonus": {
+      "file": "moba/pixel_moba/hero_level_bonus_s.pb",
+      "client_file": "moba/pixel_moba/hero_level_bonus_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.hero_level_bonus.HeroLevelBonusServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.hero_level_bonus.HeroLevelBonusClientConfig",
+      "row_count": 10,
+      "sha256": "5f859707608e563d6af0f76de61869c6f4dc41180aa219f07c8db30e775fe0e0",
+      "client_sha256": "2aab3f1b2568b9aece6bce09b26b65b9548641496ce4020a9fe7dfcfb638a3d4"
+    },
+    "moba/pixel_moba/hero_profiles": {
+      "file": "moba/pixel_moba/hero_profiles_s.pb",
+      "client_file": "moba/pixel_moba/hero_profiles_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.hero_profiles.HeroProfilesServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.hero_profiles.HeroProfilesClientConfig",
+      "row_count": 3,
+      "sha256": "0187dd9aba15754d79c27366d901abf85ac44e3ed593a80c323f9ecebd5330b5",
+      "client_sha256": "e26595139ee17183c1876481bb7e87119d3f67f40ff59857af41d8d2beeeda44"
+    },
+    "moba/pixel_moba/item": {
+      "file": "moba/pixel_moba/item_s.pb",
+      "client_file": "moba/pixel_moba/item_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.item.ItemServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.item.ItemClientConfig",
+      "row_count": 30,
+      "sha256": "e897d75125145b44a7393cebef84730199fd5f126223791e3b1a1a77eff3d2c6",
+      "client_sha256": "ca78c001d19ba6a7bd0d9af70dba357885f3c0e5dd387f6239f580e7d9fce4d8"
+    },
+    "moba/pixel_moba/map_arena": {
+      "file": "moba/pixel_moba/map_arena_s.pb",
+      "client_file": "moba/pixel_moba/map_arena_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.map_arena.MapArenaServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.map_arena.MapArenaClientConfig",
+      "row_count": 1,
+      "sha256": "2ddbf00d58e6793d61e3d9c801550866cf0c6677e9f38412df31cb230378ccb2",
+      "client_sha256": "c178325dcf0860e291994f6727e4f6c68d991aff0904755e8ab9f4414d81630a"
+    },
+    "moba/pixel_moba/map_base": {
+      "file": "moba/pixel_moba/map_base_s.pb",
+      "client_file": "moba/pixel_moba/map_base_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.map_base.MapBaseServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.map_base.MapBaseClientConfig",
+      "row_count": 2,
+      "sha256": "152f721a20314bb080febcf4aac64f9c5b49c5408670afd48f9df970f218fc64",
+      "client_sha256": "791e0ec4a1b094b30136d3b58ce722e45ee09e417a94c4b1c78f7b09e6476112"
+    },
+    "moba/pixel_moba/map_bush": {
+      "file": "moba/pixel_moba/map_bush_s.pb",
+      "client_file": "moba/pixel_moba/map_bush_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.map_bush.MapBushServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.map_bush.MapBushClientConfig",
+      "row_count": 6,
+      "sha256": "0aa008a2bbcd0d566d770ea407dc22d61b5e993de5c99b52f12a3501e3943dea",
+      "client_sha256": "cbaca19b3f89c09c27c5425bedf19a44a11a464a3db973ef1641868af3387906"
+    },
+    "moba/pixel_moba/map_lane": {
+      "file": "moba/pixel_moba/map_lane_s.pb",
+      "client_file": "moba/pixel_moba/map_lane_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.map_lane.MapLaneServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.map_lane.MapLaneClientConfig",
+      "row_count": 2,
+      "sha256": "06e63293f3ad05c9ae426417af931a1f235cb19caeca443e622da2dbadddab61",
+      "client_sha256": "5166db34a6f1299e31cbb8f039445a3781a09604440805430a2b0866b10614cd"
+    },
+    "moba/pixel_moba/map_monster_spawn": {
+      "file": "moba/pixel_moba/map_monster_spawn_s.pb",
+      "client_file": "moba/pixel_moba/map_monster_spawn_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.map_monster_spawn.MapMonsterSpawnServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.map_monster_spawn.MapMonsterSpawnClientConfig",
+      "row_count": 9,
+      "sha256": "a5fb23557c2c66b6f42a1d33ff8c018d07f001f92d755c0a9b2c0999c080c5e6",
+      "client_sha256": "342f5f3c69e785dfcd8b47f896684a3abfbf8430bbbfe918c6af0b9466fd96ba"
+    },
+    "moba/pixel_moba/map_river": {
+      "file": "moba/pixel_moba/map_river_s.pb",
+      "client_file": "moba/pixel_moba/map_river_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.map_river.MapRiverServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.map_river.MapRiverClientConfig",
+      "row_count": 1,
+      "sha256": "fafecba259beee1ffc6214557ccdd1ee7f8fd8ce95081677a95b72f44e44d46f",
+      "client_sha256": "fafecba259beee1ffc6214557ccdd1ee7f8fd8ce95081677a95b72f44e44d46f"
+    },
+    "moba/pixel_moba/map_tower": {
+      "file": "moba/pixel_moba/map_tower_s.pb",
+      "client_file": "moba/pixel_moba/map_tower_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.map_tower.MapTowerServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.map_tower.MapTowerClientConfig",
+      "row_count": 4,
+      "sha256": "39afd3f555ae20d46c9aeb35b405407910d04949a2e031c656878f1bf3c8f729",
+      "client_sha256": "fa5ee1f0b970652c3c92b38a3fd2e0f984c6d8f1c8b498730b2527a4ebd45988"
+    },
+    "moba/pixel_moba/map_wall": {
+      "file": "moba/pixel_moba/map_wall_s.pb",
+      "client_file": "moba/pixel_moba/map_wall_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.map_wall.MapWallServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.map_wall.MapWallClientConfig",
+      "row_count": 12,
+      "sha256": "1125481c4e3fdf5532e41ad44664394dd599740383857e0696af8b5d4e54947f",
+      "client_sha256": "4a592e11264c17c375407752f68463f73243c1a3967daf2ae492e2fded40ac9e"
+    },
+    "moba/pixel_moba/match_rewards": {
+      "file": "moba/pixel_moba/match_rewards_s.pb",
+      "schema": "beast.biz.moba.pixel_moba.match_rewards.MatchRewardsServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.match_rewards.MatchRewardsClientConfig",
+      "row_count": 1,
+      "sha256": "887585b230f1e77457d45e2b792c8c795a491e8c909c36b9e82ff5b70bf5815f"
+    },
+    "moba/pixel_moba/recipe": {
+      "file": "moba/pixel_moba/recipe_s.pb",
+      "schema": "beast.biz.moba.pixel_moba.recipe.RecipeServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.recipe.RecipeClientConfig",
+      "row_count": 4,
+      "sha256": "3c2f69e23b9e8814d3b5416efc42163e2b7e4b8ed441e58f69e51689e5ce941c"
+    },
+    "moba/pixel_moba/skill": {
+      "file": "moba/pixel_moba/skill_s.pb",
+      "client_file": "moba/pixel_moba/skill_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.skill.SkillServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.skill.SkillClientConfig",
+      "row_count": 11,
+      "sha256": "84e1045dfb28ab0e33aaabc855508355966887d18e351f493743c71c889461c5",
+      "client_sha256": "4b1b1c72475cdf9b8d4672082c4a1fd00ab97a187bb9d716f479714b33f01662"
+    },
+    "moba/pixel_moba/skill_level": {
+      "file": "moba/pixel_moba/skill_level_s.pb",
+      "client_file": "moba/pixel_moba/skill_level_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.skill_level.SkillLevelServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.skill_level.SkillLevelClientConfig",
+      "row_count": 23,
+      "sha256": "e6f937c80f016a0e8c325c354b6ac3da19910f1cdd012cdf4ce2697cbb933532",
+      "client_sha256": "28f6e3ba92d89c880a81f9307c5f0e5cfab17593e28d0b54306a01f114bdfb74"
+    },
+    "moba/pixel_moba/unit": {
+      "file": "moba/pixel_moba/unit_s.pb",
+      "client_file": "moba/pixel_moba/unit_c.pb",
+      "schema": "beast.biz.moba.pixel_moba.unit.UnitServerConfig",
+      "client_schema": "beast.biz.moba.pixel_moba.unit.UnitClientConfig",
+      "row_count": 10,
+      "sha256": "8423edce8eedebe5bb8f13a14431cef9f469a04ff92de5daf25f908d7d57ab78",
+      "client_sha256": "e0cfba7c7d5c2b3e774cb7a2d4278ffb2b7cb53a14987355570be9d5c4358076"
+    }
+  }
+}

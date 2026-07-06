@@ -19,6 +19,7 @@ target_link_libraries(beast_server
         beast::engine
         beast::net
         beast::rpc
+        beast::discovery
         beast::core
 )
 

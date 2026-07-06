@@ -26,7 +26,7 @@ BEAST_PLUGIN_EXPORT void beast_plugin_init(beast::platform::plugin::ServerContex
     using namespace beast::moba::pixel;
     namespace biz = beast::biz::moba::pixel_moba;
 
-    // 1) 注册策划表（15 张 moba/pixel_moba 表，logical_name 与 manifest.json 一致）。
+    // 注册策划表（moba/pixel_moba 表，logical_name 与 manifest.json 一致）。
     ctx.register_biz_table<biz::effect::EffectServerConfig>(kEffectTableLogicalName);
     ctx.register_biz_table<biz::hero_level_bonus::HeroLevelBonusServerConfig>(kHeroLevelBonusTableLogicalName);
     ctx.register_biz_table<biz::hero_profiles::HeroProfilesServerConfig>(kHeroProfilesTableLogicalName);
