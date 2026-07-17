@@ -12,8 +12,8 @@
 
 参考插件：
 
-- Receipt：`plugins/game/example/demo_ai`
-- Decision：`plugins/game/example/demo_ai2`、`plugins/game/board/riichi4p`
+- Receipt：`gameplays/example/demo_ai`
+- Decision：`gameplays/example/demo_ai2`、`gameplays/board/riichi4p`
 
 ---
 
@@ -43,7 +43,7 @@
 推荐目录（与 `demo_ai` 一致）：
 
 ```
-plugins/game/your_plugin/
+gameplays/your_plugin/
 ├── plugin.cpp                 # BEAST_PLUGIN_EXPORT，register_engine
 ├── CMakeLists.txt
 ├── engine/
@@ -355,4 +355,4 @@ static nlohmann::json required_output() {
 - [ ] `on_hunt_receipt` 处理 `result.ok` 与业务逻辑
 - [ ] `server.json` 中 `ai.enabled: true` 且 API Key 已配置
 
-更完整的 Decision 示例见 `plugins/game/example/demo_ai2` 与 `plugins/game/board/riichi4p`。
+更完整的 Decision 示例见 `gameplays/example/demo_ai2` 与 `gameplays/board/riichi4p`。

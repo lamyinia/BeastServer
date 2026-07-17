@@ -7,4 +7,6 @@ add_subdirectory(net)
 add_subdirectory(engine)
 add_subdirectory(rpc)
 add_subdirectory(discovery)
+# 平台插件（如 ai_integration）须在 server 之前定义，因 server 链接 ai_integration
+add_subdirectory(${CMAKE_SOURCE_DIR}/plugins ${CMAKE_BINARY_DIR}/plugins)
 add_subdirectory(server)

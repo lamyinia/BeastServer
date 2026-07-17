@@ -2,3 +2,6 @@
 add_subdirectory(example)
 add_subdirectory(board)
 add_subdirectory(moba)
+
+enable_testing()
+add_subdirectory(tests)

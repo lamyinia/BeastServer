@@ -4,6 +4,7 @@
 #include "beast/platform/plugin/plugin_api.hpp"
 #include "beast/platform/plugin/route_handler.hpp"
 #include "beast/platform/plugin/server_context.hpp"
+#include "beast/platform/plugin/service_registry.hpp"
 
 #include <gtest/gtest.h>
 
@@ -11,6 +12,7 @@
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <thread>
 
 #ifndef BEASTSERVER_SOURCE_DIR
@@ -172,5 +174,92 @@ TEST(PluginHostTest, RejectsDuplicateEngineName) {
     manager.start();
     EXPECT_TRUE(host.load_all());
     EXPECT_EQ(host.engine_count(), 1u);
+    manager.stop();
+}
+
+// ============================ Platform Plugin ============================
+
+namespace {
+
+struct DummyService {
+    explicit DummyService(int v) : value(v) {}
+    int value{0};
+};
+
+struct OtherService {
+    int tag{0};
+};
+
+} // namespace
+
+TEST(PlatformServiceRegistryTest, RegisterAndGetByType) {
+    beast::platform::plugin::ServiceRegistry registry;
+    auto svc = std::make_shared<DummyService>(42);
+    registry.register_service<DummyService>("dummy.svc", svc);
+
+    ASSERT_TRUE(registry.has_service("dummy.svc"));
+    ASSERT_EQ(registry.size(), 1u);
+
+    auto retrieved = registry.get_service<DummyService>("dummy.svc");
+    ASSERT_NE(retrieved, nullptr);
+    EXPECT_EQ(retrieved->value, 42);
+}
+
+TEST(PlatformServiceRegistryTest, TypeMismatchReturnsNull) {
+    beast::platform::plugin::ServiceRegistry registry;
+    registry.register_service<DummyService>("dummy.svc", std::make_shared<DummyService>(1));
+
+    // 用错误类型查询 — 必须返回 nullptr 而非 reinterpret_cast 穿透
+    auto wrong = registry.get_service<OtherService>("dummy.svc");
+    EXPECT_EQ(wrong, nullptr);
+}
+
+TEST(PlatformServiceRegistryTest, MissingServiceReturnsNull) {
+    beast::platform::plugin::ServiceRegistry registry;
+    EXPECT_EQ(registry.get_service<DummyService>("nonexistent"), nullptr);
+    EXPECT_FALSE(registry.has_service("nonexistent"));
+}
+
+TEST(PlatformServiceRegistryTest, EmptyNameOrNullPtrIsIgnored) {
+    beast::platform::plugin::ServiceRegistry registry;
+    registry.register_service<DummyService>("", std::make_shared<DummyService>(1));
+    registry.register_service<DummyService>("empty.ptr", nullptr);
+    EXPECT_EQ(registry.size(), 0u);
+    EXPECT_FALSE(registry.has_service(""));
+}
+
+TEST(PluginHostTest, LoadPlatformPluginsSkipsWhenAiDisabled) {
+    const auto plugins_dir = built_plugins_dir();
+    if (!std::filesystem::exists(plugins_dir / "beast_plugin_platform_ai.so")) {
+        GTEST_SKIP() << "platform ai plugin not built: " << plugins_dir;
+    }
+
+    instance::InstanceManager manager(test_runtime(), nullptr);
+    net::dispatch::Router router;
+    beast::platform::plugin::ServiceRegistry registry;
+    core::config::ServerConfig config;
+    config.ai.enabled = false;  // 平台 AI 插件应跳过注册
+
+    core::config::PluginsConfig plugins_config;
+    plugins_config.dir = plugins_dir.string();
+    plugins_config.auto_load = true;
+    // 仅白名单加载 platform_ai，避免 pixelmoba/riichi4p 等玩法插件依赖 bizconfig 导致测试崩溃
+    plugins_config.only = {"beast_plugin_platform_ai"};
+
+    engine::plugin::PluginHost host(plugins_config, &manager, &router);
+    host.set_service_registry(&registry);
+    host.set_server_config(&config);
+
+    manager.start();
+
+    // Phase 1: 平台插件加载。ai.enabled=false → AI 插件跳过注册 → registry 为空。
+    EXPECT_TRUE(host.load_platform_plugins());
+    EXPECT_EQ(registry.size(), 0u);
+
+    // Phase 2: 玩法插件加载。同一 .so 被再次扫描，但未导出 beast_plugin_init，静默跳过。
+    // 验证两阶段共享 .so handle 缓存不会崩溃，engine_count 保持 0。
+    EXPECT_TRUE(host.load_gameplay_plugins());
+    EXPECT_EQ(host.engine_count(), 0u);
+
     manager.stop();
 }

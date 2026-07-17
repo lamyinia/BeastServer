@@ -3,7 +3,7 @@ find_package(Boost REQUIRED)
 
 beast_add_library(engine
     GLOB src/*.cpp
-    DEPS beast::core beast::bizutil beast::ai beast::net Boost::boost)
+    DEPS beast::core beast::bizutil beast::net Boost::boost)
 
 if(UNIX AND NOT APPLE)
     target_link_libraries(beast_engine PUBLIC dl)
@@ -36,12 +36,6 @@ add_test(NAME beast_engine_player_instance_registry_test COMMAND beast_engine_pl
 add_executable(beast_engine_server_context_test tests/server_context_test.cpp)
 target_link_libraries(beast_engine_server_context_test PRIVATE beast_engine GTest::gtest_main)
 add_test(NAME beast_engine_server_context_test COMMAND beast_engine_server_context_test)
-
-add_executable(beast_engine_instance_dispatch_integration_test
-    tests/instance_dispatch_integration_test.cpp)
-target_link_libraries(beast_engine_instance_dispatch_integration_test PRIVATE beast_engine GTest::gtest_main)
-add_test(NAME beast_engine_instance_dispatch_integration_test
-    COMMAND beast_engine_instance_dispatch_integration_test)
 
 add_executable(beast_engine_timer_wheel_test tests/timer_wheel_test.cpp)
 target_link_libraries(beast_engine_timer_wheel_test PRIVATE beast_engine GTest::gtest_main)

@@ -2,7 +2,6 @@
 
 #include "beast/platform/core/config/server_config.hpp"
 #include "beast/platform/bizutil/config/store.hpp"
-#include "beast/platform/ai/service/ai_service.hpp"
 #include "beast/platform/engine/ai/instance_ai_facade.hpp"
 #include "beast/platform/engine/dispatch/instance_event_bridge.hpp"
 #include "beast/platform/engine/dispatch/player_instance_registry.hpp"
@@ -13,6 +12,7 @@
 #include "beast/platform/net/server/kcp_server.hpp"
 #include "beast/platform/net/server/tcp_server.hpp"
 #include "beast/platform/net/server/websocket_server.hpp"
+#include "beast/platform/plugin/service_registry.hpp"
 #include "beast/platform/rpc/grpc_server.hpp"
 #include "beast/platform/discovery/etcd_monitor.hpp"
 #include "beast/platform/server/room_service_grpc.hpp"
@@ -98,14 +98,15 @@ private:
     std::unique_ptr<net::server::WebsocketServer> websocket_server_;
     rpc::GrpcServer grpc_server_;
     std::unique_ptr<discovery::EtcdMonitor> etcd_monitor_;
+    /// 平台服务注册表：在 instance_manager_ 之前声明，使其在 instance_manager_ 之后析构，
+    /// 保证 InstanceAiFacade（由 registry 持有 shared_ptr）在 InstanceManager 整个生命周期内有效。
+    plugin::ServiceRegistry service_registry_;
     engine::instance::InstanceManager instance_manager_;
     engine::timer::TimerService timer_service_;
     engine::dispatch::PlayerInstanceRegistry player_registry_;
     engine::dispatch::InstanceEventBridge event_bridge_;
     engine::plugin::PluginHost plugin_host_;
     bizutil::config::BizConfigStore biz_config_;
-    std::unique_ptr<ai::AiService> ai_service_;
-    std::unique_ptr<engine::ai::InstanceAiFacade> ai_facade_;
     RoomService room_service_;
     std::shared_ptr<rpc::RoomServiceGrpcImpl> room_grpc_impl_;
 };

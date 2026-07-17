@@ -49,7 +49,7 @@ beast_configure_conan_protoc()
 beast_find_conan_grpc()
 
 add_subdirectory(platform)
-add_subdirectory(plugins)
+add_subdirectory(gameplays)
 
 add_executable(beastserver src/main.cpp)
 target_link_libraries(beastserver PRIVATE beast::server beast::core)
@@ -75,7 +75,7 @@ if(TARGET beast_plugin_demo_event)
     add_dependencies(beast_server_demo_event_room_integration_test beast_plugin_demo_event)
     target_link_libraries(beast_server_demo_event_room_integration_test PRIVATE beast_plugin_demo_event_proto)
     target_include_directories(beast_server_demo_event_room_integration_test PRIVATE
-        "${CMAKE_BINARY_DIR}/plugins/game/example/demo_event/generated")
+        "${CMAKE_BINARY_DIR}/gameplays/example/demo_event/generated")
 endif()
 target_compile_definitions(beast_server_demo_event_room_integration_test PRIVATE
     BEASTSERVER_BINARY_DIR="${CMAKE_BINARY_DIR}")

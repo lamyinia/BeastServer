@@ -1,10 +1,7 @@
 #include "beast/platform/server/game_server.hpp"
 
-#include "beast/platform/ai/service/ai_config.hpp"
-#include "beast/platform/ai/service/ai_service.hpp"
 #include "beast/platform/bizutil/config/paths.hpp"
 #include "beast/platform/core/log/logger.hpp"
-#include "beast/platform/engine/ai/instance_ai_facade.hpp"
 #include "beast/platform/engine/dispatch/instance_session_binding.hpp"
 
 #include <cstdlib>
@@ -174,15 +171,26 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
     plugin_host_.set_outbound_route_registry(shared_route_reliability_.get());
     shared_outbound_hub_->set_route_reliability_registry(shared_route_reliability_);
 
-    if (config_.ai.enabled) {
-        const auto ai_config = ai::AiConfig::from_settings(config_.ai);
-        ai_service_ = std::make_unique<ai::AiService>(ai_config);
-        ai_facade_ = std::make_unique<engine::ai::InstanceAiFacade>(ai_service_.get());
-        instance_manager_.set_instance_ai_facade(ai_facade_.get());
+    // Phase 1: 加载平台插件（注册 AI / DB / Voice 等共享服务到 ServiceRegistry）。
+    // 需在 InstanceManager 查询 AI facade 前完成；玩法插件在 start() 中以 Phase 2 加载。
+    plugin_host_.set_service_registry(&service_registry_);
+    plugin_host_.set_io_context(&io_runner_.context());
+    plugin_host_.set_server_config(&config_);
+    if (!plugin_host_.load_platform_plugins()) {
+        BEAST_LOG_ERROR("GameServer platform plugin load failed");
+    }
+
+    // 查询 AI 平台插件注册的 InstanceAiFacade，注入 InstanceManager。
+    // 若 plugins/ 下无平台 AI 插件或 config.ai.enabled=false，则 facade 缺失，玩法层禁用 AI。
+    if (auto ai_facade = service_registry_.get_service<engine::ai::InstanceAiFacade>("ai.facade")) {
+        instance_manager_.set_instance_ai_facade(ai_facade.get());
         BEAST_LOG_INFO(
-            "AI service enabled provider={} model={}",
+            "AI service bound via platform plugin provider={} model={}",
             config_.ai.default_provider,
             config_.ai.default_model);
+    } else if (config_.ai.enabled) {
+        BEAST_LOG_WARN(
+            "AI enabled in config but no platform ai plugin registered 'ai.facade' service");
     } else {
         BEAST_LOG_INFO("AI service disabled in server.json");
     }
@@ -258,8 +266,9 @@ void GameServer::start() {
     instance_manager_.start();
     timer_service_.start();
 
-    if (!plugin_host_.load_all()) {
-        BEAST_LOG_ERROR("GameServer plugin load failed");
+    // Phase 2: 加载玩法插件（注册引擎/路由/biz table）。Phase 1 平台插件已在构造期完成。
+    if (!plugin_host_.load_gameplay_plugins()) {
+        BEAST_LOG_ERROR("GameServer gameplay plugin load failed");
     }
 
     if (config_.bizconfig.enabled) {
@@ -334,8 +343,8 @@ void GameServer::stop() {
     io_runner_.stop();
     timer_service_.stop();
     instance_manager_.stop();
-    ai_facade_.reset();
-    ai_service_.reset();
+    // AI 服务生命周期由 ServiceRegistry 持有 shared_ptr 管理；
+    // service_registry_ 成员析构时自动释放（声明顺序保证其晚于 instance_manager_ 析构）。
     running_ = false;
     BEAST_LOG_INFO("GameServer stopped");
 }

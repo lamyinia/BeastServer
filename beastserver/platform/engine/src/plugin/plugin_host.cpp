@@ -3,6 +3,7 @@
 #include "beast/platform/core/log/logger.hpp"
 #include "beast/platform/engine/dispatch/player_instance_registry.hpp"
 #include "beast/platform/engine/instance/instance_manager.hpp"
+#include "beast/platform/plugin/platform_context.hpp"
 #include "beast/platform/plugin/server_context.hpp"
 
 #include <filesystem>
@@ -51,7 +52,16 @@ void PluginHost::register_static_plugin(
     static_plugins_.push_back(StaticPluginEntry{std::move(plugin_name), init_fn});
 }
 
-bool PluginHost::load_all() {
+bool PluginHost::load_platform_plugins() {
+    // 平台插件不操作 gameplay 状态（engines_/custom_routes_/biz_table_registrations_），
+    // 故无需 clear；仅扫描 .so 中的 beast_platform_plugin_init 符号。
+    if (!plugins_config_.auto_load) {
+        return true;
+    }
+    return load_plugins_from_directory(LoadPhase::Platform);
+}
+
+bool PluginHost::load_gameplay_plugins() {
     engines_.clear();
     custom_routes_.clear();
     biz_table_registrations_.clear();
@@ -61,7 +71,7 @@ bool PluginHost::load_all() {
     }
 
     if (plugins_config_.auto_load) {
-        if (!load_plugins_from_directory()) {
+        if (!load_plugins_from_directory(LoadPhase::Gameplay)) {
             return false;
         }
     }
@@ -176,11 +186,25 @@ void PluginHost::invoke_plugin(
     BEAST_LOG_INFO("PluginHost: initialized static plugin {}", plugin_name);
 }
 
+void PluginHost::invoke_platform_plugin(
+    PluginName plugin_name,
+    ::beast::platform::plugin::PlatformPluginInitFn init_fn) {
+    if (!plugins_config_.should_load(plugin_name)) {
+        BEAST_LOG_INFO("PluginHost: skip platform plugin {} (config filter)", plugin_name);
+        return;
+    }
+
+    ::beast::platform::plugin::PlatformContext ctx(
+        plugin_name, this, service_registry_, io_context_, server_config_);
+    init_fn(ctx);
+    BEAST_LOG_INFO("PluginHost: initialized platform plugin {}", plugin_name);
+}
+
 PluginName PluginHost::plugin_name_from_path(const std::filesystem::path& path) {
     return filename_stem_string(path);
 }
 
-bool PluginHost::load_plugins_from_directory() {
+bool PluginHost::load_plugins_from_directory(LoadPhase phase) {
     namespace fs = std::filesystem;
 
     const fs::path plugins_dir = plugins_config_.dir;
@@ -189,9 +213,9 @@ bool PluginHost::load_plugins_from_directory() {
         return true;
     }
 
-    auto try_load = [this](const fs::path& path) {
+    auto try_load = [this, phase](const fs::path& path) {
         if (path.extension() == ".so" || path.extension() == ".dylib") {
-            load_shared_object(path);
+            load_shared_object(path, phase);
         }
     };
 
@@ -212,7 +236,7 @@ bool PluginHost::load_plugins_from_directory() {
     return true;
 }
 
-bool PluginHost::load_shared_object(const std::filesystem::path& path) {
+bool PluginHost::load_shared_object(const std::filesystem::path& path, LoadPhase phase) {
 #if defined(__linux__) || defined(__APPLE__)
     const PluginName plugin_name = plugin_name_from_path(path);
     if (!plugins_config_.should_load(plugin_name)) {
@@ -220,23 +244,45 @@ bool PluginHost::load_shared_object(const std::filesystem::path& path) {
         return true;
     }
 
-    NativeHandle handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+    // 复用已 dlopen 的 handle：同一 .so 可能在 Phase 1 / Phase 2 都被扫描，
+    // 避免重复 dlopen 与 dlclose 过早释放符号。
+    NativeHandle handle = nullptr;
+    for (auto& lib : shared_libraries_) {
+        if (lib.path == path.string()) {
+            handle = lib.handle;
+            break;
+        }
+    }
+
     if (!handle) {
-        BEAST_LOG_ERROR("PluginHost: dlopen failed {}: {}", path.string(), dlerror());
-        return false;
+        handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (!handle) {
+            BEAST_LOG_ERROR("PluginHost: dlopen failed {}: {}", path.string(), dlerror());
+            return false;
+        }
+        shared_libraries_.push_back(SharedLibrary{path.string(), handle});
     }
 
-    auto* symbol = dlsym(handle, "beast_plugin_init");
+    const char* symbol_name = (phase == LoadPhase::Platform)
+        ? "beast_platform_plugin_init"
+        : "beast_plugin_init";
+
+    auto* symbol = dlsym(handle, symbol_name);
     if (!symbol) {
-        BEAST_LOG_ERROR("PluginHost: dlsym beast_plugin_init failed {}: {}", path.string(), dlerror());
-        dlclose(handle);
-        return false;
+        // 该 .so 未导出当前 phase 所需符号 — 正常情况（平台 .so 无 gameplay 入口，反之亦然），
+        // 静默跳过，不报错也不 dlclose（其他 phase 可能仍需此 handle）。
+        return true;
     }
 
-    auto* init_fn = reinterpret_cast<::beast::platform::plugin::PluginInitFn>(symbol);
-    invoke_plugin(plugin_name, init_fn);
-    shared_libraries_.push_back(SharedLibrary{path.string(), handle});
-    BEAST_LOG_INFO("PluginHost: loaded shared plugin {} from {}", plugin_name, path.string());
+    if (phase == LoadPhase::Platform) {
+        auto* init_fn = reinterpret_cast<::beast::platform::plugin::PlatformPluginInitFn>(symbol);
+        invoke_platform_plugin(plugin_name, init_fn);
+        BEAST_LOG_INFO("PluginHost: loaded platform plugin {} from {}", plugin_name, path.string());
+    } else {
+        auto* init_fn = reinterpret_cast<::beast::platform::plugin::PluginInitFn>(symbol);
+        invoke_plugin(plugin_name, init_fn);
+        BEAST_LOG_INFO("PluginHost: loaded gameplay plugin {} from {}", plugin_name, path.string());
+    }
     return true;
 #else
     BEAST_LOG_WARN("PluginHost: dynamic loading unsupported on this platform: {}", path.string());

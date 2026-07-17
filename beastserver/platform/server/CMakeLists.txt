@@ -2,7 +2,7 @@ find_package(GTest REQUIRED)
 
 beast_add_library(server
     GLOB src/*.cpp
-    DEPS beast::engine beast::net beast::rpc beast::discovery beast::core)
+    DEPS beast::engine beast::ai_integration beast::net beast::rpc beast::discovery beast::core)
 
 enable_testing()
 
