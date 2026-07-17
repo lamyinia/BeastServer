@@ -4,6 +4,10 @@
 #include "beast/platform/core/log/logger.hpp"
 
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ssl/context.hpp>
+#include <openssl/ssl.h>
+
+#include <stdexcept>
 
 namespace beast::platform::net::server {
 
@@ -23,6 +27,7 @@ TcpServer::TcpServer(
         channel::TcpPipelineOptions{.max_frame_bytes = config_.max_frame_bytes},
         auth::make_auth_verifier(auth_config_));
     outbound_hub_ = std::make_shared<outbound::OutboundHub>(ioc, session_manager_);
+    init_ssl_context();
 }
 
 TcpServer::TcpServer(
@@ -37,7 +42,89 @@ TcpServer::TcpServer(
     , external_ioc_(&ioc)
     , router_(std::move(router))
     , session_manager_(std::move(session_manager))
-    , outbound_hub_(std::move(outbound_hub)) {}
+    , outbound_hub_(std::move(outbound_hub)) {
+    init_ssl_context();
+}
+
+void TcpServer::init_ssl_context() {
+    ssl_context_ = build_ssl_context();
+    if (ssl_context_) {
+        session_manager_->set_ssl_context(ssl_context_);
+        BEAST_LOG_INFO("TcpServer TLS enabled: cert={}, key={}, min_version={}",
+                       config_.tls.cert_path, config_.tls.key_path, config_.tls.min_version);
+    }
+}
+
+std::shared_ptr<boost::asio::ssl::context> TcpServer::build_ssl_context() {
+    if (!config_.tls.enabled) {
+        return nullptr;
+    }
+
+    auto ctx = std::make_shared<boost::asio::ssl::context>(
+        boost::asio::ssl::context::tls_server);
+
+    // 最低 TLS 版本
+    if (config_.tls.min_version == "TLSv1.3") {
+        SSL_CTX_set_min_proto_version(ctx->native_handle(), TLS1_3_VERSION);
+    } else {
+        // 默认 TLSv1.2
+        SSL_CTX_set_min_proto_version(ctx->native_handle(), TLS1_2_VERSION);
+    }
+
+    // cipher suite（留空用 OpenSSL 默认）
+    if (!config_.tls.cipher_list.empty()) {
+        if (SSL_CTX_set_cipher_list(ctx->native_handle(), config_.tls.cipher_list.c_str()) != 1) {
+            throw std::runtime_error("TcpServer: SSL_CTX_set_cipher_list failed");
+        }
+    }
+
+    // 加载服务端证书和私钥
+    boost::system::error_code ec;
+    ctx->use_certificate_chain_file(config_.tls.cert_path, ec);
+    if (ec) {
+        throw std::runtime_error(
+            "TcpServer: load certificate failed: " + ec.message()
+            + " (path=" + config_.tls.cert_path + ")");
+    }
+    ctx->use_private_key_file(config_.tls.key_path, boost::asio::ssl::context::pem, ec);
+    if (ec) {
+        throw std::runtime_error(
+            "TcpServer: load private key failed: " + ec.message()
+            + " (path=" + config_.tls.key_path + ")");
+    }
+
+    return ctx;
+}
+
+bool TcpServer::reload_tls_cert() {
+    if (!config_.tls.enabled) {
+        BEAST_LOG_WARN("TcpServer reload_tls_cert: TLS disabled, skip");
+        return false;
+    }
+
+    // 先在局部变量构建新 context，成功后再 swap，避免失败时破坏现有 ssl_context_。
+    // 旧连接的 SslTransport 持有旧 context 的 shared_ptr，swap 后引用计数 >0，
+    // 旧 context 不会被销毁，直到所有旧连接关闭才释放，实现零停机轮换。
+    std::shared_ptr<boost::asio::ssl::context> new_ctx;
+    try {
+        new_ctx = build_ssl_context();
+    } catch (const std::exception& e) {
+        BEAST_LOG_ERROR("TcpServer reload_tls_cert failed (kept old context): {}", e.what());
+        return false;
+    }
+
+    if (!new_ctx) {
+        BEAST_LOG_WARN("TcpServer reload_tls_cert: build returned null");
+        return false;
+    }
+
+    ssl_context_ = new_ctx;
+    session_manager_->set_ssl_context(ssl_context_);
+    BEAST_LOG_INFO(
+        "TcpServer TLS cert reloaded: cert={}, key={} (old context kept alive by existing connections)",
+        config_.tls.cert_path, config_.tls.key_path);
+    return true;
+}
 
 boost::asio::io_context& TcpServer::io_context() noexcept {
     return external_ioc_ ? *external_ioc_ : own_io_runner_->context();

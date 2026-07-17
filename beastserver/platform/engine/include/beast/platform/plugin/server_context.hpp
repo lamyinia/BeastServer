@@ -7,6 +7,7 @@
 #include "beast/platform/net/channel/channel_handler_context.hpp"
 #include "beast/platform/net/channel/message.hpp"
 #include "beast/platform/net/dispatch/router.hpp"
+#include "beast/platform/net/outbound/route_reliability_registry.hpp"
 
 #include <google/protobuf/message.h>
 
@@ -47,6 +48,10 @@ public:
 
     bool register_engine(engine::instance::EngineDescriptor descriptor);
     void register_route(RouteId route, net::dispatch::RouteHandler handler);
+
+    /// 声明出站路由的可靠性。插件 init 时调用，OutboundHub send 时据此分流可靠/旁路通道。
+    /// 需 GameServer 在 PluginHost 注入 OutboundRouteRegistry 后才生效；未注入时为 no-op。
+    void declare_outbound_route(RouteId route, net::outbound::RouteReliability reliability);
 
     template<typename ConfigMsg>
     void register_biz_table(std::string logical_name) {

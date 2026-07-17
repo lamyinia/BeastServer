@@ -2,59 +2,22 @@ find_package(CURL REQUIRED)
 find_package(Boost REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
+find_package(GTest REQUIRED)
 
 set(_ai_proto_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
-file(MAKE_DIRECTORY "${_ai_proto_dir}")
+beast_generate_protobuf(
+    OUT_DIR "${_ai_proto_dir}"
+    PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto"
+    PROTOS ai_event.proto
+    OUT_SOURCES _ai_proto_src
+    COMMENT "Generating platform/ai protobuf sources")
 
-set(_ai_proto_src "${_ai_proto_dir}/ai_event.pb.cc")
-set(_ai_proto_hdr "${_ai_proto_dir}/ai_event.pb.h")
+beast_add_library(ai
+    GLOB src/*.cpp
+    SOURCES ${_ai_proto_src}
+    INCLUDE_DIRS "${_ai_proto_dir}"
+    DEPS beast::core Boost::boost CURL::libcurl OpenSSL::Crypto protobuf::libprotobuf)
 
-add_custom_command(
-    OUTPUT "${_ai_proto_src}" "${_ai_proto_hdr}"
-    COMMAND $<TARGET_FILE:protobuf::protoc>
-    ARGS --cpp_out=${_ai_proto_dir}
-         -I ${CMAKE_CURRENT_SOURCE_DIR}/proto
-         ${CMAKE_CURRENT_SOURCE_DIR}/proto/ai_event.proto
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/proto/ai_event.proto protobuf::protoc
-    COMMENT "Generating platform/ai protobuf sources"
-    VERBATIM
-)
-
-add_library(beast_ai STATIC
-    src/model/ai_types.cpp
-    src/ai_config.cpp
-    src/client/sse_parser.cpp
-    src/client/http_client.cpp
-    src/client/volc_signer.cpp
-    src/driver/ai_driver.cpp
-    src/driver/driver_util.cpp
-    src/driver/volcengine_driver.cpp
-    src/driver/openai_driver.cpp
-    src/service/ai_service.cpp
-    ${_ai_proto_src}
-)
-
-add_library(beast::ai ALIAS beast_ai)
-
-target_include_directories(beast_ai
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<BUILD_INTERFACE:${_ai_proto_dir}>
-        $<INSTALL_INTERFACE:include>
-)
-
-target_link_libraries(beast_ai
-    PUBLIC
-        beast::core
-        Boost::boost
-        CURL::libcurl
-        OpenSSL::Crypto
-        protobuf::libprotobuf
-)
-
-target_compile_features(beast_ai PUBLIC cxx_std_20)
-
-find_package(GTest REQUIRED)
 enable_testing()
 
 add_executable(beast_ai_service_test tests/ai_service_test.cpp)

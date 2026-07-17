@@ -5,6 +5,7 @@
 #include "beast/platform/bizutil/config/registration.hpp"
 #include "beast/platform/engine/instance/engine_descriptor.hpp"
 #include "beast/platform/net/dispatch/router.hpp"
+#include "beast/platform/net/outbound/route_reliability_registry.hpp"
 #include "beast/platform/plugin/plugin_api.hpp"
 
 #include <map>
@@ -61,6 +62,12 @@ public:
         return biz_table_registrations_;
     }
 
+    /// 注入出站路由可靠性注册表（GameServer 创建后共享给 PluginHost + OutboundHub）。
+    /// 需在 load_all() / invoke_plugin() 前调用。
+    void set_outbound_route_registry(net::outbound::OutboundRouteRegistry* registry) {
+        outbound_route_registry_ = registry;
+    }
+
 private:
     friend class ::beast::platform::plugin::ServerContext;
 
@@ -81,6 +88,7 @@ private:
     net::dispatch::Router* router_{nullptr};
     net::session::SessionManager* session_manager_{nullptr};
     dispatch::PlayerInstanceRegistry* player_registry_{nullptr};
+    net::outbound::OutboundRouteRegistry* outbound_route_registry_{nullptr};
 
     struct StaticPluginEntry {
         PluginName name;

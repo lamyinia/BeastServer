@@ -12,6 +12,7 @@
 #include <boost/asio/any_io_executor.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/post.hpp>
+#include <boost/asio/ssl/context.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/unordered/concurrent_flat_map.hpp>
@@ -50,6 +51,11 @@ public:
         auth::AuthVerifier auth_verifier = auth::default_token_verifier());
 
     void set_on_authenticated(OnAuthenticated callback);
+
+    /// 注入 ssl_context 后，on_accept 会创建 SslChannel（TLS 加密 TCP）。
+    /// ssl_context 生命周期由调用方（TcpServer）保证长于 SessionManager。
+    /// 不调用则 on_accept 走明文 TcpChannel 路径。
+    void set_ssl_context(std::shared_ptr<boost::asio::ssl::context> ssl_context);
 
     void on_accept(boost::asio::ip::tcp::socket socket);
     void on_new_connection(std::shared_ptr<channel::IChannel> channel);
@@ -116,6 +122,7 @@ private:
     channel::KcpPipelineOptions pipeline_options_kcp_;
     auth::AuthVerifier auth_verifier_;
     OnAuthenticated on_authenticated_;
+    std::shared_ptr<boost::asio::ssl::context> ssl_context_;  // null = 明文 TCP
 
     mutable std::mutex pending_mutex_;
     std::unordered_map<std::string, PendingConnection> pending_;

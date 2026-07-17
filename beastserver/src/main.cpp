@@ -14,9 +14,16 @@
 namespace {
 
 std::atomic<bool> g_running{true};
+// SIGHUP 触发 TLS 证书热重载：handler 仅置 flag（async-signal-safe），
+// 实际 reload 在主循环中执行（避免在 signal handler 里调用非 async-signal-safe 函数）。
+std::atomic<bool> g_reload_tls_requested{false};
 
-void on_signal(int /*signum*/) {
+void on_terminate_signal(int /*signum*/) {
     g_running.store(false, std::memory_order_relaxed);
+}
+
+void on_reload_signal(int /*signum*/) {
+    g_reload_tls_requested.store(true, std::memory_order_relaxed);
 }
 
 void print_usage(const char* argv0) {
@@ -49,13 +56,21 @@ int main(int argc, char** argv) {
 
     beast::platform::server::GameServer server(std::move(config_result.value()), options);
 
-    std::signal(SIGINT, on_signal);
-    std::signal(SIGTERM, on_signal);
+    std::signal(SIGINT, on_terminate_signal);
+    std::signal(SIGTERM, on_terminate_signal);
+    // SIGHUP 默认动作是终止进程，必须显式注册 handler 才能用它触发证书热重载。
+    std::signal(SIGHUP, on_reload_signal);
 
     server.start();
 
     while (g_running.load(std::memory_order_relaxed)) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        if (g_reload_tls_requested.exchange(false, std::memory_order_relaxed)) {
+            BEAST_LOG_INFO("SIGHUP received, reloading TLS certificate");
+            if (!server.reload_tls_cert()) {
+                BEAST_LOG_WARN("TLS certificate reload failed or TLS disabled");
+            }
+        }
     }
 
     server.stop();

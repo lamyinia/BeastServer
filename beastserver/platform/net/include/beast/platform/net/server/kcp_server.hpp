@@ -5,6 +5,7 @@
 #include "beast/platform/net/io/io_context_runner.hpp"
 #include "beast/platform/net/listener/udp_listener.hpp"
 #include "beast/platform/net/outbound/outbound_hub.hpp"
+#include "beast/platform/net/outbound/route_reliability_registry.hpp"
 #include "beast/platform/net/session/session_manager.hpp"
 
 #include <cstdint>
@@ -48,6 +49,12 @@ public:
     void start();
     void stop();
 
+    /// 注入出站路由可靠性注册表，用于 on_new_peer 时创建 UnreliableReceiver 并 wire 到 KcpChannel。
+    /// 未注入时旁路帧在 channel 层丢弃（on_unreliable_bytes_ 未设置）。
+    void set_route_reliability_registry(std::shared_ptr<outbound::OutboundRouteRegistry> registry) {
+        route_reliability_ = std::move(registry);
+    }
+
 private:
     void on_new_peer(const boost::asio::ip::udp::endpoint& peer, std::vector<std::uint8_t>&& first_packet);
 
@@ -58,6 +65,7 @@ private:
     std::shared_ptr<dispatch::Router> router_;
     std::shared_ptr<session::SessionManager> session_manager_;
     std::shared_ptr<outbound::OutboundHub> outbound_hub_;
+    std::shared_ptr<outbound::OutboundRouteRegistry> route_reliability_;
     std::unique_ptr<listener::UdpListener> listener_;
 };
 

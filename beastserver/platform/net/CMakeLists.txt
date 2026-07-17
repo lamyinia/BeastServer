@@ -4,128 +4,32 @@ find_package(OpenSSL REQUIRED)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-set(BEAST_PROTO_DIR ${BEAST_BIZ_PROTOCOL_PLATFORM_DIR})
-set(BEAST_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
-file(MAKE_DIRECTORY ${BEAST_GENERATED_DIR})
+beast_add_proto_library(net_proto
+    PROTO_DIR ${BEAST_BIZ_PROTOCOL_PLATFORM_DIR}
+    PROTOS envelope.proto auth.proto room.proto
+    DEPS protobuf::libprotobuf)
 
-set(BEAST_PROTO_FILES
-    ${BEAST_PROTO_DIR}/envelope.proto
-    ${BEAST_PROTO_DIR}/auth.proto
-    ${BEAST_PROTO_DIR}/room.proto
-)
+beast_add_c_library(kcp
+    SOURCES third_party/kcp/ikcp.c
+    INCLUDE_DIRS third_party/kcp
+    DEPS Threads::Threads)
 
-set(BEAST_PROTO_PB_SRCS)
-set(BEAST_PROTO_PB_HDRS)
-foreach(_proto_file ${BEAST_PROTO_FILES})
-    get_filename_component(_proto_name "${_proto_file}" NAME_WE)
-    list(APPEND BEAST_PROTO_PB_SRCS "${BEAST_GENERATED_DIR}/${_proto_name}.pb.cc")
-    list(APPEND BEAST_PROTO_PB_HDRS "${BEAST_GENERATED_DIR}/${_proto_name}.pb.h")
-endforeach()
+beast_add_library(net
+    GLOB src/*.cpp
+    DEPS beast::core beast::net_proto beast::kcp Boost::boost OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
 
-add_custom_command(
-    OUTPUT ${BEAST_PROTO_PB_SRCS} ${BEAST_PROTO_PB_HDRS}
-    COMMAND $<TARGET_FILE:protobuf::protoc>
-    ARGS --cpp_out=${BEAST_GENERATED_DIR} -I ${BEAST_PROTO_DIR} ${BEAST_PROTO_FILES}
-    DEPENDS ${BEAST_PROTO_FILES} protobuf::protoc
-    COMMENT "Generating beast.net protobuf sources"
-    VERBATIM
-)
-
-add_library(beast_net_proto STATIC ${BEAST_PROTO_PB_SRCS} ${BEAST_PROTO_PB_HDRS})
-add_library(beast::net_proto ALIAS beast_net_proto)
-target_link_libraries(beast_net_proto PUBLIC protobuf::libprotobuf)
-target_include_directories(beast_net_proto PUBLIC ${BEAST_GENERATED_DIR})
-
-add_library(beast_kcp STATIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/kcp/ikcp.c)
-set_target_properties(beast_kcp PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    LINKER_LANGUAGE C)
-target_include_directories(beast_kcp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/kcp)
-target_link_libraries(beast_kcp PUBLIC Threads::Threads)
-add_library(beast::kcp ALIAS beast_kcp)
-
-add_library(beast_net STATIC
-    src/channel/channel_pipeline.cpp
-    src/channel/tcp_channel.cpp
-    src/channel/kcp_channel.cpp
-    src/channel/codec/length_field_decoder.cpp
-    src/channel/codec/length_field_encoder.cpp
-    src/channel/codec/protobuf_decoder.cpp
-    src/channel/codec/protobuf_encoder.cpp
-    src/channel/tcp_pipeline.cpp
-    src/channel/kcp_pipeline.cpp
-    src/auth/auth_verifier.cpp
-    src/auth/auth_verifier_dev.cpp
-    src/auth/auth_verifier_jwt.cpp
-    src/auth/auth_handler.cpp
-    src/dispatch/router.cpp
-    src/dispatch/router_handler.cpp
-    src/channel/transport/tcp_transport.cpp
-    src/channel/transport/kcp_transport.cpp
-    src/session/session.cpp
-    src/session/session_manager.cpp
-    src/outbound/outbound_hub.cpp
-    src/listener/tcp_listener.cpp
-    src/listener/udp_listener.cpp
-    src/io/io_context_runner.cpp
-    src/server/tcp_server.cpp
-    src/server/kcp_server.cpp
-)
-
-add_library(beast::net ALIAS beast_net)
-
-target_include_directories(beast_net
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-)
-
-target_link_libraries(beast_net
-    PUBLIC
-        beast::core
-        beast::net_proto
-        beast::kcp
-        Boost::boost
-        OpenSSL::Crypto
-        Threads::Threads
-)
-
-target_compile_features(beast_net PUBLIC cxx_std_20)
-
-enable_testing()
-
-add_executable(beast_net_pipeline_test tests/channel_pipeline_test.cpp)
-target_link_libraries(beast_net_pipeline_test PRIVATE beast_net GTest::gtest_main)
-add_test(NAME beast_net_pipeline_test COMMAND beast_net_pipeline_test)
-
-add_executable(beast_net_outbound_test tests/outbound_hub_test.cpp)
-target_link_libraries(beast_net_outbound_test PRIVATE beast_net GTest::gtest_main)
-add_test(NAME beast_net_outbound_test COMMAND beast_net_outbound_test)
-
-add_executable(beast_net_length_field_test tests/length_field_codec_test.cpp)
-target_link_libraries(beast_net_length_field_test PRIVATE beast_net GTest::gtest_main)
-add_test(NAME beast_net_length_field_test COMMAND beast_net_length_field_test)
-
-add_executable(beast_net_protobuf_codec_test tests/protobuf_codec_test.cpp)
-target_link_libraries(beast_net_protobuf_codec_test PRIVATE beast_net GTest::gtest_main)
-add_test(NAME beast_net_protobuf_codec_test COMMAND beast_net_protobuf_codec_test)
-
-add_executable(beast_net_tcp_loopback_test tests/tcp_loopback_test.cpp)
-target_link_libraries(beast_net_tcp_loopback_test PRIVATE beast_net GTest::gtest_main)
-add_test(NAME beast_net_tcp_loopback_test COMMAND beast_net_tcp_loopback_test)
-
-add_executable(beast_net_kcp_loopback_test tests/kcp_loopback_test.cpp)
-target_link_libraries(beast_net_kcp_loopback_test PRIVATE beast_net GTest::gtest_main)
-add_test(NAME beast_net_kcp_loopback_test COMMAND beast_net_kcp_loopback_test)
-
-add_executable(beast_net_session_instance_test tests/session_instance_test.cpp)
-target_link_libraries(beast_net_session_instance_test PRIVATE beast_net GTest::gtest_main)
-add_test(NAME beast_net_session_instance_test COMMAND beast_net_session_instance_test)
-
-add_executable(beast_net_session_concurrent_test tests/session_manager_concurrent_test.cpp)
-target_link_libraries(beast_net_session_concurrent_test PRIVATE beast_net GTest::gtest_main)
-add_test(NAME beast_net_session_concurrent_test COMMAND beast_net_session_concurrent_test)
-
-add_executable(beast_net_auth_verifier_test tests/auth_verifier_test.cpp)
-target_link_libraries(beast_net_auth_verifier_test PRIVATE beast_net GTest::gtest_main)
-add_test(NAME beast_net_auth_verifier_test COMMAND beast_net_auth_verifier_test)
+beast_add_gtest(net_pipeline SOURCES tests/channel_pipeline_test.cpp DEPS beast_net)
+beast_add_gtest(net_outbound SOURCES tests/outbound_hub_test.cpp DEPS beast_net)
+beast_add_gtest(net_length_field SOURCES tests/length_field_codec_test.cpp DEPS beast_net)
+beast_add_gtest(net_protobuf_codec SOURCES tests/protobuf_codec_test.cpp DEPS beast_net)
+beast_add_gtest(net_tcp_loopback SOURCES tests/tcp_loopback_test.cpp DEPS beast_net)
+beast_add_gtest(net_websocket_loopback SOURCES tests/websocket_loopback_test.cpp DEPS beast_net)
+beast_add_gtest(net_ssl_loopback SOURCES tests/ssl_loopback_test.cpp DEPS beast_net)
+beast_add_gtest(net_kcp_loopback SOURCES tests/kcp_loopback_test.cpp DEPS beast_net)
+beast_add_gtest(net_unreliable_frame SOURCES tests/unreliable_frame_test.cpp DEPS beast_net)
+beast_add_gtest(net_kcp_crypto SOURCES tests/kcp_crypto_test.cpp DEPS beast_net)
+beast_add_gtest(net_kcp_crypto_loopback SOURCES tests/kcp_crypto_loopback_test.cpp DEPS beast_net)
+beast_add_gtest(net_kcp_bypass_crypto_loopback SOURCES tests/kcp_bypass_crypto_loopback_test.cpp DEPS beast_net)
+beast_add_gtest(net_session_instance SOURCES tests/session_instance_test.cpp DEPS beast_net)
+beast_add_gtest(net_session_concurrent SOURCES tests/session_manager_concurrent_test.cpp DEPS beast_net)
+beast_add_gtest(net_auth_verifier SOURCES tests/auth_verifier_test.cpp DEPS beast_net)

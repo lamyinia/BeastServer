@@ -37,6 +37,13 @@ void ServerContext::register_route(RouteId route, net::dispatch::RouteHandler ha
     }
 }
 
+void ServerContext::declare_outbound_route(RouteId route, net::outbound::RouteReliability reliability) {
+    // ServerContext 是 PluginHost 的 friend，直接访问 outbound_route_registry_。
+    if (host_ && host_->outbound_route_registry_) {
+        host_->outbound_route_registry_->declare(std::move(route), reliability);
+    }
+}
+
 void ServerContext::register_biz_table(
     std::string logical_name,
     std::function<std::unique_ptr<google::protobuf::Message>()> factory) {

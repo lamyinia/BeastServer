@@ -43,8 +43,15 @@ KcpTransport::~KcpTransport() {
 }
 
 void KcpTransport::start(OnBytes on_bytes, OnClosed on_closed, OnError on_error) {
+    // 3-arg 重载：不启用旁路通道，转发到 4-arg 版本（on_unreliable=nullptr 时 demux 命中 magic 的包被丢弃）。
+    start(std::move(on_bytes), nullptr, std::move(on_closed), std::move(on_error));
+}
+
+void KcpTransport::start(OnBytes on_bytes, OnUnreliableBytes on_unreliable,
+                         OnClosed on_closed, OnError on_error) {
     boost::asio::post(strand_, [self = shared_from_this(), this,
                                 on_bytes = std::move(on_bytes),
+                                on_unreliable = std::move(on_unreliable),
                                 on_closed = std::move(on_closed),
                                 on_error = std::move(on_error)]() mutable {
         if (closed_) {
@@ -56,6 +63,7 @@ void KcpTransport::start(OnBytes on_bytes, OnClosed on_closed, OnError on_error)
         }
         started_ = true;
         on_bytes_ = std::move(on_bytes);
+        on_unreliable_bytes_ = std::move(on_unreliable);
         on_closed_ = std::move(on_closed);
         on_error_ = std::move(on_error);
 
@@ -84,8 +92,9 @@ void KcpTransport::start(OnBytes on_bytes, OnClosed on_closed, OnError on_error)
         ikcp_setoutput(kcp_, &KcpTransport::udp_output_cb);
 
         BEAST_LOG_DEBUG(
-            "KcpTransport kcp created conv={} snd_wnd={} rcv_wnd={} nodelay={} interval={} resend={} nc={}",
-            conv, config_.snd_wnd, config_.rcv_wnd, config_.nodelay, config_.interval, config_.resend, config_.nc);
+            "KcpTransport kcp created conv={} snd_wnd={} rcv_wnd={} nodelay={} interval={} resend={} nc={} unreliable_magic=0x{:04x}",
+            conv, config_.snd_wnd, config_.rcv_wnd, config_.nodelay, config_.interval, config_.resend, config_.nc,
+            config_.unreliable_magic);
 
         do_read();
         schedule_update();
@@ -104,6 +113,26 @@ void KcpTransport::send(Bytes&& data) {
         // ikcp_send 已入队；实际 UDP 包在下次 ikcp_update 时经 output 回调写出。
         // 立刻 flush 一次 update，降低小消息延迟。
         on_update_tick();
+    });
+}
+
+void KcpTransport::send_unreliable(Bytes&& frame) {
+    boost::asio::post(strand_, [self = shared_from_this(), this, frame = std::move(frame)]() mutable {
+        if (closed_ || !socket_.is_open()) {
+            return;
+        }
+        // 背压：旁路语义本就是"最新即正确"，超阈值时丢旧帧，绝不阻塞 KCP 可靠路径。
+        while (unreliable_queue_bytes_ + frame.size() > config_.max_unreliable_queue_bytes &&
+               !unreliable_write_queue_.empty()) {
+            unreliable_queue_bytes_ -= unreliable_write_queue_.front().size();
+            unreliable_write_queue_.pop_front();
+        }
+        unreliable_queue_bytes_ += frame.size();
+        unreliable_write_queue_.push_back(std::move(frame));
+        if (!writing_) {
+            writing_ = true;
+            do_write();
+        }
     });
 }
 
@@ -128,7 +157,21 @@ void KcpTransport::set_remote_endpoint(Endpoint endpoint) {
 
 void KcpTransport::inject_inbound(const Bytes& data) {
     boost::asio::post(strand_, [self = shared_from_this(), this, data]() {
-        if (closed_ || !kcp_ || !on_bytes_) {
+        if (closed_) {
+            return;
+        }
+        // Demux：unreliable frame 优先判定（不要求 kcp_ 已初始化，可在握手前到达）。
+        // 注意必须在 kcp_/on_bytes_ 就绪检查之前，否则旁路首包会被丢弃。
+        if (is_unreliable_frame(data, config_.unreliable_magic)) {
+            if (on_unreliable_bytes_) {
+                // 拷贝投递：lambda 捕获的 data 是 const 引用副本，接收侧按值拿到独立缓冲。
+                Bytes copy = data;
+                on_unreliable_bytes_(std::move(copy));
+            }
+            return;
+        }
+        // KCP 路径：需要 kcp_ 与 on_bytes_ 都就绪。
+        if (!kcp_ || !on_bytes_) {
             return;
         }
         const int ret = ikcp_input(kcp_, reinterpret_cast<const char*>(data.data()), static_cast<long>(data.size()));
@@ -188,15 +231,24 @@ void KcpTransport::do_read() {
                 return;
             }
 
-            if (n > 0 && kcp_) {
-                const int ret = ikcp_input(
-                    kcp_,
-                    reinterpret_cast<const char*>(read_buf_.data()),
-                    static_cast<long>(n));
-                if (ret < 0) {
-                    BEAST_LOG_DEBUG("ikcp_input(read) ret={} size={}", ret, n);
-                } else {
-                    poll_recv();
+            if (n > 0) {
+                // Demux：旁路帧优先判定（own-socket 模式兜底路径，与 inject_inbound 对齐）。
+                if (is_unreliable_frame(read_buf_.data(), n, config_.unreliable_magic)) {
+                    if (on_unreliable_bytes_) {
+                        // read_buf_ 会被下一次 async_receive_from 覆盖，必须拷贝。
+                        Bytes copy(read_buf_.begin(), read_buf_.begin() + static_cast<std::ptrdiff_t>(n));
+                        on_unreliable_bytes_(std::move(copy));
+                    }
+                } else if (kcp_) {
+                    const int ret = ikcp_input(
+                        kcp_,
+                        reinterpret_cast<const char*>(read_buf_.data()),
+                        static_cast<long>(n));
+                    if (ret < 0) {
+                        BEAST_LOG_DEBUG("ikcp_input(read) ret={} size={}", ret, n);
+                    } else {
+                        poll_recv();
+                    }
                 }
             }
             do_read();
@@ -204,15 +256,27 @@ void KcpTransport::do_read() {
 }
 
 void KcpTransport::do_write() {
-    if (closed_ || !socket_.is_open() || write_queue_.empty()) {
+    if (closed_ || !socket_.is_open()) {
         writing_ = false;
         return;
     }
 
+    // 队列选择：KCP 可靠路径优先（不能被旁路饿死），旁路其次。
+    // UDP 单 socket 不能并发 async_send_to，两个队列共享 writing_ flag 串行化。
+    const bool is_unreliable = write_queue_.empty();
+    if (is_unreliable && unreliable_write_queue_.empty()) {
+        writing_ = false;
+        return;
+    }
+
+    auto& queue = is_unreliable ? unreliable_write_queue_ : write_queue_;
+    const std::size_t front_size = queue.front().size();
+
     socket_.async_send_to(
-        boost::asio::buffer(write_queue_.front()),
+        boost::asio::buffer(queue.front()),
         remote_,
-        boost::asio::bind_executor(strand_, [self = shared_from_this(), this](
+        boost::asio::bind_executor(strand_, [self = shared_from_this(), this,
+                                             is_unreliable, front_size](
                                                  const boost::system::error_code& ec,
                                                  std::size_t) {
             if (closed_) {
@@ -227,8 +291,16 @@ void KcpTransport::do_write() {
                 writing_ = false;
                 return;
             }
-            if (!write_queue_.empty()) {
-                write_queue_.pop_front();
+            // 完成后扣减对应队列
+            if (is_unreliable) {
+                unreliable_queue_bytes_ -= std::min(unreliable_queue_bytes_, front_size);
+                if (!unreliable_write_queue_.empty()) {
+                    unreliable_write_queue_.pop_front();
+                }
+            } else {
+                if (!write_queue_.empty()) {
+                    write_queue_.pop_front();
+                }
             }
             do_write();
         }));
@@ -270,6 +342,8 @@ void KcpTransport::do_close() {
     }
 
     write_queue_.clear();
+    unreliable_write_queue_.clear();
+    unreliable_queue_bytes_ = 0;
     writing_ = false;
 
     if (on_closed_) {

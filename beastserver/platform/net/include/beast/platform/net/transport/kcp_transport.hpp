@@ -1,6 +1,7 @@
 #pragma once
 
 #include "beast/platform/core/config/server_config.hpp"
+#include "beast/platform/net/transport/unreliable_frame.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/strand.hpp>
@@ -29,6 +30,10 @@ struct KcpTransportConfig {
     std::uint32_t resend{2};
     std::uint32_t nc{1};
 
+    // 旁路不可靠通道配置（Phase 6 从 server.json net.kcp.unreliable 注入）
+    std::uint16_t unreliable_magic{kUnreliableFrameMagic}; // 旁路帧 magic；需避开 conv 高 2 字节
+    std::size_t max_unreliable_queue_bytes{64 * 1024};     // 旁路发送队列背压阈值，超限丢旧帧
+
     [[nodiscard]] static KcpTransportConfig from_kcp_config(const core::config::KcpConfig& c) {
         return KcpTransportConfig{
             .conv = c.conv,
@@ -38,21 +43,29 @@ struct KcpTransportConfig {
             .interval = c.interval,
             .resend = c.resend,
             .nc = c.nc,
+            .unreliable_magic = c.unreliable.magic,
+            .max_unreliable_queue_bytes = c.unreliable.max_queue_bytes,
         };
     }
 };
 
 /**
- * KcpTransport：真实 KCP over UDP 传输层。
+ * KcpTransport：真实 KCP over UDP 传输层，可选旁路不可靠子通道。
  *
  * 数据路径：
- *   - 入站：UdpListener demux 后调 inject_inbound → ikcp_input → poll_recv 轮询 ikcp_recv → on_bytes_
- *   - 出站：send → ikcp_send（数据入 KCP 发送队列）→ update_tick 中 ikcp_update →
- *           ikcp output 回调 → async_send_to 发到 remote_
+ *   - 入站：UdpListener demux 后调 inject_inbound → 按 magic 区分：
+ *       · unreliable frame（首 2 字节 == config_.unreliable_magic）→ on_unreliable_bytes_
+ *       · KCP 报文 → ikcp_input → poll_recv 轮询 ikcp_recv → on_bytes_
+ *   - 出站（可靠）：send → ikcp_send → update_tick 中 ikcp_update →
+ *                   ikcp output 回调 → on_udp_output → write_queue_ → do_write
+ *   - 出站（旁路）：send_unreliable → unreliable_write_queue_ → do_write
+ *   - socket 写串行化：write_queue_ 与 unreliable_write_queue_ 共享 writing_ flag，
+ *     KCP 优先、旁路其次；UDP 单 socket 不能并发 async_send_to。
  *   - update：定时器周期性 ikcp_update，按 ikcp_check 返回值调度下次
  *
- * 线程模型：所有 ikcp_* 调用与 on_bytes_ 触发都串行化在 strand_ 上，无需加锁。
+ * 线程模型：所有 ikcp_* 调用与回调触发都串行化在 strand_ 上，无需加锁。
  * conv 协商：当前固定使用 config_.conv（默认 1）；真实握手协商未实现，需客户端配置一致。
+ * 旁路 magic：默认 0xBEEF，需避开 conv 高 2 字节（默认 conv=1 的 wire 首字节为 0x00 0x00）。
  */
 class KcpTransport final : public std::enable_shared_from_this<KcpTransport> {
 public:
@@ -64,6 +77,8 @@ public:
     using OnBytes = std::function<void(Bytes&&)>;
     using OnClosed = std::function<void()>;
     using OnError = std::function<void(const std::error_code&)>;
+    /// 旁路不可靠帧回调：demux 后的 unreliable frame 整帧（含 8 字节 header）按值投递。
+    using OnUnreliableBytes = std::function<void(Bytes&&)>;
 
     KcpTransport(UdpSocket socket, Strand strand, KcpTransportConfig config = {});
 
@@ -72,8 +87,20 @@ public:
     KcpTransport(const KcpTransport&) = delete;
     KcpTransport& operator=(const KcpTransport&) = delete;
 
+    /// 3-arg start：不启用旁路通道（向后兼容，KcpChannel Phase 2 前仍用此重载）。
     void start(OnBytes on_bytes, OnClosed on_closed, OnError on_error);
+
+    /// 4-arg start：启用旁路通道，demux 后的 unreliable frame 经 on_unreliable 投递。
+    void start(OnBytes on_bytes, OnUnreliableBytes on_unreliable,
+               OnClosed on_closed, OnError on_error);
+
     void send(Bytes&& data);
+
+    /// 旁路发送：frame 应为 encode_unreliable_frame 的输出（含 magic+route_id+seq+payload）。
+    /// 走独立 unreliable_write_queue_，与 KCP 的 write_queue_ 共享单一 socket 写串行化，
+    /// KCP 优先、旁路其次；旁路队列超 max_unreliable_queue_bytes 时丢旧帧（背压）。
+    void send_unreliable(Bytes&& frame);
+
     void close();
 
     [[nodiscard]] bool is_closed() const noexcept;
@@ -116,6 +143,8 @@ private:
     OnBytes on_bytes_;
     OnClosed on_closed_;
     OnError on_error_;
+    /// 旁路不可靠帧回调；为 nullptr 时 demux 命中 magic 的包会被丢弃（3-arg start 路径）。
+    OnUnreliableBytes on_unreliable_bytes_;
 
     ikcpcb* kcp_{nullptr};
 
@@ -129,6 +158,10 @@ private:
 
     /// async_send_to 暂存的写出缓冲（ikcp output 回调给的指针，按值拷贝后异步发出）。
     std::deque<Bytes> write_queue_;
+    /// 旁路发送队列；与 write_queue_ 共享 writing_ flag 串行化 socket 写（UDP 单 socket 不能并发 async_send_to）。
+    std::deque<Bytes> unreliable_write_queue_;
+    /// 旁路队列当前字节数，用于背压判定（超 max_unreliable_queue_bytes_ 丢旧帧）。
+    std::size_t unreliable_queue_bytes_{0};
     bool writing_{false};
 
     bool started_{false};

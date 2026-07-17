@@ -2,7 +2,9 @@
 
 #include "beast/platform/core/log/logger.hpp"
 #include "beast/platform/net/channel/channel_pipeline.hpp"
+#include "beast/platform/net/channel/kcp_channel.hpp"
 #include "beast/platform/net/channel/protobuf_payload.hpp"
+#include "beast/platform/net/transport/unreliable_frame.hpp"
 
 #include <utility>
 
@@ -27,6 +29,13 @@ OutboundHub::OutboundHub(
     std::shared_ptr<session::SessionManager> session_manager)
     : ioc_(ioc)
     , session_manager_(std::move(session_manager)) {}
+
+bool OutboundHub::route_is_unreliable(const core::RouteId& route) const {
+    if (!route_reliability_) {
+        return false;
+    }
+    return route_reliability_->is_unreliable(route);
+}
 
 void OutboundHub::complete(SendCallback on_complete, const OutboundSendResult result) {
     if (!on_complete) {
@@ -72,7 +81,15 @@ void OutboundHub::send(
     const google::protobuf::MessageLite& message,
     const ProtocolPreference preference,
     SendCallback on_complete) {
-    send(player_id, channel::make_protobuf_message(route, message), preference, std::move(on_complete));
+    auto msg = channel::make_protobuf_message(route, message);
+    if (route_is_unreliable(route)) {
+        // 旁路路径：预算 route_hash + seq，走 dispatch_unreliable 选 KCP 通道。
+        const auto hash = OutboundRouteRegistry::route_id_hash(route);
+        const auto seq = next_seq(route);
+        dispatch_unreliable(player_id, std::move(msg), hash, seq, std::move(on_complete));
+    } else {
+        send(player_id, std::move(msg), preference, std::move(on_complete));
+    }
 }
 
 void OutboundHub::broadcast(
@@ -81,7 +98,17 @@ void OutboundHub::broadcast(
     const google::protobuf::MessageLite& message,
     const ProtocolPreference preference,
     SendCallback on_complete) {
-    broadcast(player_ids, channel::make_protobuf_message(route, message), preference, std::move(on_complete));
+    auto msg = channel::make_protobuf_message(route, message);
+    if (route_is_unreliable(route)) {
+        // 旁路广播：所有玩家共享同一 seq（同一逻辑消息）。
+        const auto hash = OutboundRouteRegistry::route_id_hash(route);
+        const auto seq = next_seq(route);
+        for (const auto& pid : player_ids) {
+            dispatch_unreliable(pid, clone_message(msg), hash, seq, on_complete);
+        }
+    } else {
+        broadcast(player_ids, std::move(msg), preference, std::move(on_complete));
+    }
 }
 
 void OutboundHub::dispatch_message(
@@ -165,6 +192,72 @@ void OutboundHub::dispatch_bytes(
         }
 
         channel->pipeline().fire_write(std::move(data));
+        channel->pipeline().fire_flush();
+        complete(std::move(on_complete), OutboundSendResult::Ok);
+    });
+}
+
+std::uint32_t OutboundHub::next_seq(const core::RouteId& route) {
+    std::lock_guard lock(seq_mutex_);
+    return ++seq_counters_[route];
+}
+
+void OutboundHub::dispatch_unreliable(
+    const core::PlayerId& player_id,
+    channel::MessagePtr message,
+    const std::uint16_t route_hash,
+    const std::uint32_t seq,
+    SendCallback on_complete) {
+    if (!session_manager_) {
+        BEAST_LOG_WARN("OutboundHub: session manager not set");
+        complete(std::move(on_complete), OutboundSendResult::NoSession);
+        return;
+    }
+
+    const auto session = session_manager_->get_session(player_id);
+    if (!session) {
+        BEAST_LOG_TRACE("OutboundHub: no session for {}", player_id);
+        complete(std::move(on_complete), OutboundSendResult::NoSession);
+        return;
+    }
+
+    session->dispatch([this,
+                         player_id,
+                         message = std::move(message),
+                         route_hash,
+                         seq,
+                         on_complete = std::move(on_complete),
+                         session]() mutable {
+        if (!session_manager_->is_registered_session(player_id, session)) {
+            BEAST_LOG_WARN("OutboundHub: session no longer registered for {}", player_id);
+            complete(std::move(on_complete), OutboundSendResult::SessionNotRegistered);
+            return;
+        }
+
+        // 旁路优先 KCP 通道：select_channel(PreferKcp) 会先找 KCP，找不到回退 TCP。
+        const auto channel = session->select_channel(ProtocolPreference::PreferKcp);
+        if (!channel) {
+            BEAST_LOG_WARN("OutboundHub: no active channel for {} (unreliable)", player_id);
+            complete(std::move(on_complete), OutboundSendResult::NoChannel);
+            return;
+        }
+
+        if (channel->type() == channel::ChannelType::Kcp) {
+            // KCP 通道：encode unreliable frame，走旁路。
+            auto kcp_ch = std::static_pointer_cast<channel::KcpChannel>(channel);
+            transport::UnreliableFrame frame{
+                .magic = transport::kUnreliableFrameMagic,
+                .route_id = route_hash,
+                .seq = seq,
+                .payload = std::move(message->payload),
+            };
+            kcp_ch->send_unreliable_frame(transport::encode_unreliable_frame(frame));
+            complete(std::move(on_complete), OutboundSendResult::Ok);
+            return;
+        }
+
+        // 非 KCP 通道（TCP only）：回退可靠路径，用原始 message。
+        channel->pipeline().fire_write(channel::MessagePtr(std::move(message)));
         channel->pipeline().fire_flush();
         complete(std::move(on_complete), OutboundSendResult::Ok);
     });

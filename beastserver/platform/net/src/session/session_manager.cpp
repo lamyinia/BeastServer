@@ -3,7 +3,10 @@
 #include "beast/platform/core/log/logger.hpp"
 #include "beast/platform/net/auth/auth_handler.hpp"
 #include "beast/platform/net/channel/channel_pipeline.hpp"
+#include "beast/platform/net/channel/kcp_channel.hpp"
+#include "beast/platform/net/channel/ssl_channel.hpp"
 #include "beast/platform/net/channel/tcp_channel.hpp"
+#include "beast/platform/net/transport/ssl_transport.hpp"
 #include "beast/platform/net/transport/tcp_transport.hpp"
 
 #include <boost/asio/post.hpp>
@@ -68,6 +71,10 @@ void SessionManager::set_on_authenticated(OnAuthenticated callback) {
     on_authenticated_ = std::move(callback);
 }
 
+void SessionManager::set_ssl_context(std::shared_ptr<boost::asio::ssl::context> ssl_context) {
+    ssl_context_ = std::move(ssl_context);
+}
+
 void SessionManager::register_pending_connection(PendingConnection pending) {
     if (!pending.channel) {
         BEAST_LOG_ERROR("register_pending_connection: channel is null");
@@ -92,8 +99,17 @@ void SessionManager::register_pending_connection(PendingConnection pending) {
     // 按 channel 类型分发 pipeline：TCP 走 tcp_pipeline，KCP 走 kcp_pipeline。
     // 两者均安装 LengthField + Protobuf codec，但 KCP 的 KcpPipelineOptions 携带 conv/snd_wnd 等
     // 协议参数（虽然 KCP 协议参数在 transport 层消费，pipeline 仅用 max_frame_bytes）。
+    // KCP 启用加密时 install_kcp_pipeline 返回 KcpCryptoHandler，由 AuthHandler 在
+    // 鉴权成功后激活（auth.response 明文发送后再 enable，确保客户端能完成握手）。
+    // encrypt_bypass=true 时，同一 handler 也注入 KcpChannel 用于旁路帧加密/解密，
+    // 旁路路径与可靠路径共享 session keys，enable() 后自动同步激活。
+    std::shared_ptr<channel::KcpCryptoHandler> crypto_handler;
     if (bound_channel->type() == channel::ChannelType::Kcp) {
-        channel::install_kcp_pipeline(bound_channel, pipeline_options_kcp_);
+        crypto_handler = channel::install_kcp_pipeline(bound_channel, pipeline_options_kcp_);
+        if (crypto_handler && pipeline_options_kcp_.crypto.encrypt_bypass) {
+            auto kcp_ch = std::static_pointer_cast<channel::KcpChannel>(bound_channel);
+            kcp_ch->set_bypass_crypto_handler(crypto_handler);
+        }
     } else {
         channel::install_tcp_pipeline(bound_channel, pipeline_options_tcp_);
     }
@@ -104,7 +120,8 @@ void SessionManager::register_pending_connection(PendingConnection pending) {
             self->on_auth_success(connection_id, player_id);
         },
         [self, connection_id]() { self->on_auth_failed(connection_id); },
-        auth_verifier_));
+        auth_verifier_,
+        std::move(crypto_handler)));  // nullptr for TCP/TLS or KCP plaintext
 
     bound_channel->set_on_inactive([self, connection_id]() {
         BEAST_LOG_DEBUG("pending connection inactive: {}", connection_id);
@@ -116,8 +133,19 @@ void SessionManager::register_pending_connection(PendingConnection pending) {
 
 void SessionManager::on_accept(boost::asio::ip::tcp::socket socket) {
     auto strand = Session::make_strand(executor_);
-    auto transport = std::make_shared<transport::TcpTransport>(std::move(socket), strand);
-    auto channel = std::make_shared<channel::TcpChannel>(transport);
+
+    std::shared_ptr<channel::IChannel> channel;
+    if (ssl_context_) {
+        // TLS 路径：SslTransport 内部先 async_handshake，握手成功后才开始读循环。
+        // 传 shared_ptr 而非解引用：SslTransport 持有 ssl_context_ 的 shared_ptr，
+        // 零停机热重载时旧连接的 SslTransport 仍持有旧 context 直到连接关闭。
+        auto transport = std::make_shared<transport::SslTransport>(
+            std::move(socket), ssl_context_, strand);
+        channel = std::make_shared<channel::SslChannel>(transport);
+    } else {
+        auto transport = std::make_shared<transport::TcpTransport>(std::move(socket), strand);
+        channel = std::make_shared<channel::TcpChannel>(transport);
+    }
 
     register_pending_connection(PendingConnection{
         .channel = std::move(channel),

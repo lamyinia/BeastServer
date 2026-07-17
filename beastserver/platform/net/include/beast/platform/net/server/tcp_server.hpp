@@ -7,6 +7,8 @@
 #include "beast/platform/net/outbound/outbound_hub.hpp"
 #include "beast/platform/net/session/session_manager.hpp"
 
+#include <boost/asio/ssl/context.hpp>
+
 #include <cstdint>
 #include <memory>
 
@@ -40,7 +42,24 @@ public:
     void start();
     void stop();
 
+    /// 热重载 TLS 证书：重读 config_.tls.cert_path/key_path，构建新 ssl::context，
+    /// 原子 swap 到 ssl_context_ 并注入 SessionManager。
+    /// 旧连接的 SslTransport 仍持有旧 context 的 shared_ptr，直到连接关闭才释放，
+    /// 实现零停机证书轮换（SIGHUP 触发）。
+    /// 返回 true 表示重载成功；false 表示 TLS 未启用或加载失败（保留旧 context）。
+    [[nodiscard]] bool reload_tls_cert();
+
 private:
+    /// 根据 config_.tls 初始化 ssl_context（加载证书/私钥/版本/cipher）。
+    /// config_.tls.enabled=false 时返回 nullptr。
+    /// 失败时抛 std::runtime_error，由调用方在构造期捕获。
+    void init_ssl_context();
+
+    /// 按 config_.tls 构建 ssl::context（不含赋值给成员）。
+    /// config_.tls.enabled=false 时返回 nullptr。
+    /// 失败时抛 std::runtime_error。
+    [[nodiscard]] std::shared_ptr<boost::asio::ssl::context> build_ssl_context();
+
     core::config::TcpConfig config_;
     core::config::AuthConfig auth_config_;
     /// 自有模式：own_io_runner_ 持有；注入模式：nullptr，使用 external_ioc_。
@@ -50,6 +69,7 @@ private:
     std::shared_ptr<session::SessionManager> session_manager_;
     std::shared_ptr<outbound::OutboundHub> outbound_hub_;
     std::unique_ptr<listener::TcpListener> listener_;
+    std::shared_ptr<boost::asio::ssl::context> ssl_context_;
 };
 
 } // namespace beast::platform::net::server

@@ -1,55 +1,15 @@
 find_package(GTest REQUIRED)
 find_package(Boost REQUIRED)
 
-add_library(beast_engine STATIC
-    src/context/engine_context.cpp
-    src/ai/instance_ai_facade.cpp
-    src/ai/ai_tool_registry.cpp
-    src/ai/ai_tool_dispatch.cpp
-    src/ai/ai_event_dispatch.cpp
-    src/ai/engine_ai_events.cpp
-    src/ai/engine_ai_declarative.cpp
-    src/ai/engine_ai_decisions.cpp
-    src/ai/engine_ai_host.cpp
-    src/instance/instance.cpp
-    src/carrier/event_carrier.cpp
-    src/carrier/event_carrier_pool.cpp
-    src/carrier/loop_carrier.cpp
-    src/carrier/loop_carrier_pool.cpp
-    src/instance/instance_manager.cpp
-    src/dispatch/player_instance_registry.cpp
-    src/dispatch/instance_event_bridge.cpp
-    src/dispatch/instance_session_binding.cpp
-    src/timer/timer_wheel.cpp
-    src/timer/timer_service.cpp
-    src/plugin/server_context.cpp
-    src/plugin/plugin_host.cpp
-)
-
-add_library(beast::engine ALIAS beast_engine)
-
-target_include_directories(beast_engine
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-)
-
-target_link_libraries(beast_engine
-    PUBLIC
-        beast::core
-        beast::bizutil
-        beast::ai
-        beast::net
-        Boost::boost
-)
+beast_add_library(engine
+    GLOB src/*.cpp
+    DEPS beast::core beast::bizutil beast::ai beast::net Boost::boost)
 
 if(UNIX AND NOT APPLE)
     target_link_libraries(beast_engine PUBLIC dl)
 elseif(APPLE)
     target_link_libraries(beast_engine PUBLIC ${CMAKE_DL_LIBS})
 endif()
-
-target_compile_features(beast_engine PUBLIC cxx_std_20)
 
 enable_testing()
 

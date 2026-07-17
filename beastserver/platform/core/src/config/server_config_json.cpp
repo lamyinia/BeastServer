@@ -21,6 +21,14 @@ void parse_tcp(const nlohmann::json& tcp, TcpConfig& out) {
     assign_if_present(tcp, "max_frame_bytes", out.max_frame_bytes);
     assign_if_present(tcp, "idle_timeout_seconds", out.idle_timeout_seconds);
     assign_if_present(tcp, "io_thread_count", out.io_thread_count);
+    if (tcp.contains("tls") && tcp.at("tls").is_object()) {
+        const auto& tls = tcp.at("tls");
+        assign_if_present(tls, "enabled", out.tls.enabled);
+        assign_if_present(tls, "cert_path", out.tls.cert_path);
+        assign_if_present(tls, "key_path", out.tls.key_path);
+        assign_if_present(tls, "min_version", out.tls.min_version);
+        assign_if_present(tls, "cipher_list", out.tls.cipher_list);
+    }
 }
 
 void parse_kcp(const nlohmann::json& kcp, KcpConfig& out) {
@@ -34,6 +42,37 @@ void parse_kcp(const nlohmann::json& kcp, KcpConfig& out) {
     assign_if_present(kcp, "interval", out.interval);
     assign_if_present(kcp, "resend", out.resend);
     assign_if_present(kcp, "nc", out.nc);
+    if (kcp.contains("unreliable") && kcp.at("unreliable").is_object()) {
+        const auto& u = kcp.at("unreliable");
+        assign_if_present(u, "enabled", out.unreliable.enabled);
+        assign_if_present(u, "magic", out.unreliable.magic);
+        assign_if_present(u, "max_queue_bytes", out.unreliable.max_queue_bytes);
+    }
+    if (kcp.contains("crypto") && kcp.at("crypto").is_object()) {
+        const auto& c = kcp.at("crypto");
+        assign_if_present(c, "tag_bytes", out.crypto.tag_bytes);
+        assign_if_present(c, "encrypt_bypass", out.crypto.encrypt_bypass);
+        if (c.contains("mode")) {
+            const auto& mode_str = c.at("mode").get<std::string>();
+            if (mode_str == "none") {
+                out.crypto.mode = KcpCryptoMode::None;
+            } else if (mode_str == "psk_aes_gcm") {
+                out.crypto.mode = KcpCryptoMode::PskAesGcm;
+            } else {
+                throw std::invalid_argument(
+                    "kcp.crypto.mode must be \"none\" or \"psk_aes_gcm\", got: " + mode_str);
+            }
+        }
+    }
+}
+
+void parse_websocket(const nlohmann::json& ws, WebsocketConfig& out) {
+    assign_if_present(ws, "port", out.port);
+    assign_if_present(ws, "max_frame_bytes", out.max_frame_bytes);
+    assign_if_present(ws, "idle_timeout_seconds", out.idle_timeout_seconds);
+    if (ws.contains("allowed_origins") && ws.at("allowed_origins").is_array()) {
+        out.allowed_origins = ws.at("allowed_origins").get<std::vector<std::string>>();
+    }
 }
 
 void parse_log(const nlohmann::json& log, LogConfig& out) {
@@ -278,6 +317,9 @@ ServerConfig parse_server_node(const nlohmann::json& server) {
     if (server.contains("net") && server.at("net").contains("kcp")) {
         parse_kcp(server.at("net").at("kcp"), config.net.kcp);
     }
+    if (server.contains("net") && server.at("net").contains("websocket")) {
+        parse_websocket(server.at("net").at("websocket"), config.net.websocket);
+    }
     if (server.contains("log")) {
         parse_log(server.at("log"), config.log);
     }
@@ -342,6 +384,41 @@ std::optional<std::string> validate_server_config(const ServerConfig& config) {
         }
         if (secret.empty()) {
             return "auth.mode=jwt requires jwt.hmac_secret or jwt.hmac_secret_env";
+        }
+    }
+
+    // TCP TLS 校验
+    if (config.net.tcp.tls.enabled) {
+        if (config.net.tcp.tls.cert_path.empty()) {
+            return "tcp.tls.enabled=true requires tcp.tls.cert_path";
+        }
+        if (config.net.tcp.tls.key_path.empty()) {
+            return "tcp.tls.enabled=true requires tcp.tls.key_path";
+        }
+        const auto& v = config.net.tcp.tls.min_version;
+        if (v != "TLSv1.2" && v != "TLSv1.3") {
+            return std::string("tcp.tls.min_version must be \"TLSv1.2\" or \"TLSv1.3\", got: ") + v;
+        }
+    }
+
+    // KCP 加密参数校验
+    if (config.net.kcp.crypto.enabled()) {
+        if (config.net.kcp.crypto.tag_bytes < 8 || config.net.kcp.crypto.tag_bytes > 16) {
+            return "kcp.crypto.tag_bytes must be in [8, 16]";
+        }
+    }
+
+    // 生产环境强制加密：debug.enabled=false 时，启用的传输层必须开启加密
+    if (!config.debug.enabled) {
+        if (config.net.tcp.port > 0 && !config.net.tcp.tls.enabled) {
+            return "tcp.tls.enabled must be true in production (debug.enabled=false)";
+        }
+        if (config.net.kcp.enabled() && !config.net.kcp.crypto.enabled()) {
+            return "kcp.crypto.mode must not be \"none\" in production (debug.enabled=false)";
+        }
+        // WebSocket 生产环境必须配置 Origin 白名单（防 CSRF）
+        if (config.net.websocket.enabled() && config.net.websocket.allowed_origins.empty()) {
+            return "websocket.allowed_origins must not be empty in production (debug.enabled=false)";
         }
     }
 

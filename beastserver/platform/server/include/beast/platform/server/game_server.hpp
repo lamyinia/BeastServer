@@ -12,6 +12,7 @@
 #include "beast/platform/net/io/io_context_runner.hpp"
 #include "beast/platform/net/server/kcp_server.hpp"
 #include "beast/platform/net/server/tcp_server.hpp"
+#include "beast/platform/net/server/websocket_server.hpp"
 #include "beast/platform/rpc/grpc_server.hpp"
 #include "beast/platform/discovery/etcd_monitor.hpp"
 #include "beast/platform/server/room_service_grpc.hpp"
@@ -35,10 +36,15 @@ public:
     void start();
     void stop();
 
+    /// 热重载 TLS 证书（SIGHUP 触发）：委托给 TcpServer::reload_tls_cert()。
+    /// 旧连接保持旧 context，新连接用新 context，零停机轮换。
+    [[nodiscard]] bool reload_tls_cert();
+
     [[nodiscard]] bool running() const noexcept { return running_; }
 
     [[nodiscard]] net::server::TcpServer& tcp_server() noexcept { return tcp_server_; }
     [[nodiscard]] net::server::KcpServer* kcp_server() noexcept { return kcp_server_.get(); }
+    [[nodiscard]] net::server::WebsocketServer* websocket_server() noexcept { return websocket_server_.get(); }
     [[nodiscard]] rpc::GrpcServer& grpc_server() noexcept { return grpc_server_; }
     [[nodiscard]] engine::instance::InstanceManager& instance_manager() noexcept {
         return instance_manager_;
@@ -84,9 +90,12 @@ private:
     std::shared_ptr<net::dispatch::Router> shared_router_;
     std::shared_ptr<net::session::SessionManager> shared_session_manager_;
     std::shared_ptr<net::outbound::OutboundHub> shared_outbound_hub_;
+    /// 共享给 PluginHost（declare 写）+ OutboundHub（send 读）的出站路由可靠性注册表。
+    std::shared_ptr<net::outbound::OutboundRouteRegistry> shared_route_reliability_;
 
     net::server::TcpServer tcp_server_;
     std::unique_ptr<net::server::KcpServer> kcp_server_;
+    std::unique_ptr<net::server::WebsocketServer> websocket_server_;
     rpc::GrpcServer grpc_server_;
     std::unique_ptr<discovery::EtcdMonitor> etcd_monitor_;
     engine::instance::InstanceManager instance_manager_;

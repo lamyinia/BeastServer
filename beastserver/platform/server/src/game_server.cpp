@@ -128,6 +128,11 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
               .interval = config_.net.kcp.interval,
               .resend = config_.net.kcp.resend,
               .nc = config_.net.kcp.nc,
+              .crypto = {
+                  .enabled = config_.net.kcp.crypto.enabled(),
+                  .tag_bytes = config_.net.kcp.crypto.tag_bytes,
+                  .encrypt_bypass = config_.net.kcp.crypto.encrypt_bypass,
+              },
           },
           net::auth::make_auth_verifier(config_.auth)))
     , shared_outbound_hub_(
@@ -162,6 +167,12 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
           shared_session_manager_.get(),
           &instance_manager_) {
     instance_manager_.set_timer_service(&timer_service_);
+
+    // 创建出站路由可靠性注册表，共享给 PluginHost（declare 写）+ OutboundHub（send 读）。
+    // 需在 plugin_host_.load_all() / start() 前完成注入。
+    shared_route_reliability_ = std::make_shared<net::outbound::OutboundRouteRegistry>();
+    plugin_host_.set_outbound_route_registry(shared_route_reliability_.get());
+    shared_outbound_hub_->set_route_reliability_registry(shared_route_reliability_);
 
     if (config_.ai.enabled) {
         const auto ai_config = ai::AiConfig::from_settings(config_.ai);
@@ -198,12 +209,32 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
             shared_router_,
             shared_session_manager_,
             shared_outbound_hub_);
+        // 注入路由可靠性注册表，使 KcpServer on_new_peer 时 wire UnreliableReceiver 到每个 KcpChannel。
+        kcp_server_->set_route_reliability_registry(shared_route_reliability_);
         BEAST_LOG_INFO(
             "KCP server enabled configured_port={} io_threads={}",
             config_.net.kcp.port,
             config_.net.kcp.io_thread_count);
     } else {
         BEAST_LOG_INFO("KCP server disabled (net.kcp.port=0)");
+    }
+
+    if (config_.net.websocket.enabled()) {
+        // WebSocket 共享 TCP 的 SessionManager/Router/OutboundHub：
+        // Web 客户端经 nginx 终止 TLS 后以明文 ws:// 连入，plugin 路由对 TCP/KCP/WS 同时生效。
+        websocket_server_ = std::make_unique<net::server::WebsocketServer>(
+            config_.net.websocket,
+            config_.auth,
+            io_runner_.context(),
+            shared_router_,
+            shared_session_manager_,
+            shared_outbound_hub_);
+        BEAST_LOG_INFO(
+            "WebSocket server enabled configured_port={} origins={}",
+            config_.net.websocket.port,
+            config_.net.websocket.allowed_origins.size());
+    } else {
+        BEAST_LOG_INFO("WebSocket server disabled (net.websocket.port=0)");
     }
 
     room_grpc_impl_ = std::make_shared<rpc::RoomServiceGrpcImpl>(room_service_);
@@ -265,6 +296,10 @@ void GameServer::start() {
         kcp_server_->start();
     }
 
+    if (websocket_server_) {
+        websocket_server_->start();
+    }
+
     if (!grpc_server_.start()) {
         BEAST_LOG_ERROR("GameServer gRPC start failed on port {}", config_.grpc.port);
     }
@@ -273,9 +308,10 @@ void GameServer::start() {
 
     running_ = true;
     BEAST_LOG_INFO(
-        "GameServer ready tcp_port={} kcp_port={} grpc_port={} gameplay_count={}",
+        "GameServer ready tcp_port={} kcp_port={} ws_port={} grpc_port={} gameplay_count={}",
         tcp_server_.listen_port(),
         kcp_server_ ? kcp_server_->listen_port() : 0,
+        websocket_server_ ? websocket_server_->listen_port() : 0,
         config_.grpc.port,
         plugin_host_.engine_count());
 }
@@ -288,6 +324,9 @@ void GameServer::stop() {
     BEAST_LOG_INFO("GameServer stopping");
     etcd_monitor_->stop();
     grpc_server_.stop();
+    if (websocket_server_) {
+        websocket_server_->stop();
+    }
     if (kcp_server_) {
         kcp_server_->stop();
     }
@@ -299,6 +338,10 @@ void GameServer::stop() {
     ai_service_.reset();
     running_ = false;
     BEAST_LOG_INFO("GameServer stopped");
+}
+
+bool GameServer::reload_tls_cert() {
+    return tcp_server_.reload_tls_cert();
 }
 
 } // namespace beast::platform::server

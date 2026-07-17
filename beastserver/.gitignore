@@ -28,3 +28,6 @@ compile_commands.json
 .cache/
 .idea/
 .vscode/
+
+# TLS 证书与私钥（CA 脚本生成，勿提交）
+config/certs/

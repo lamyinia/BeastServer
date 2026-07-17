@@ -1,5 +1,7 @@
 #include "beast/platform/core/log/logger.hpp"
+#include "beast/platform/net/outbound/route_reliability_registry.hpp"
 #include "beast/platform/net/server/kcp_server.hpp"
+#include "beast/platform/net/transport/unreliable_frame.hpp"
 
 #include <gtest/gtest.h>
 
@@ -24,6 +26,8 @@ namespace {
 
 using namespace beast::platform;
 namespace channel = net::channel;
+namespace transport = net::transport;
+namespace outbound = net::outbound;
 
 channel::Bytes frame_bytes(const channel::Bytes& payload) {
     channel::Bytes framed;
@@ -104,6 +108,15 @@ public:
             BEAST_LOG_ERROR("KcpTestClient ikcp_send failed ret={}", ret);
         }
         ikcp_update(kcp_, now_ms());
+    }
+
+    /// 发送原始 UDP 字节（绕过 ikcp_send），用于测试旁路不可靠帧路径。
+    void send_raw(const channel::Bytes& data) {
+        boost::system::error_code ec;
+        socket_.send_to(boost::asio::buffer(data), remote_, 0, ec);
+        if (ec) {
+            BEAST_LOG_WARN("KcpTestClient send_raw failed: {}", ec.message());
+        }
     }
 
     /// 同步接收一条完整应用层消息（ikcp_recv），总超时 timeout。
@@ -298,6 +311,151 @@ TEST(KcpLoopbackTest, RouterDispatchesAfterAuth) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     EXPECT_EQ(echo_count.load(), 1);
+
+    server.stop();
+}
+
+// ========== 旁路不可靠帧集成测试 ==========
+
+TEST(KcpLoopbackTest, UnreliableFrameDeliveredAfterAuth) {
+    core::init_log({.level = "warn"});
+
+    core::config::KcpConfig config;
+    config.port = 0;
+    config.unreliable.enabled = true;
+
+    net::server::KcpServer server(config);
+
+    // 注入 route reliability registry，声明 test.unreliable 为 Unreliable。
+    auto registry = std::make_shared<outbound::OutboundRouteRegistry>();
+    registry->declare("test.unreliable", outbound::RouteReliability::Unreliable);
+    server.set_route_reliability_registry(registry);
+
+    // 注册 route handler，验证旁路帧经 receiver → pipeline → RouterHandler 分发。
+    std::atomic<int> unreliable_count{0};
+    std::vector<std::uint8_t> received_payload;
+    server.router().register_route(
+        "test.unreliable",
+        [&](net::channel::ChannelHandlerContext& /*ctx*/, const net::channel::MessagePtr& msg) {
+            received_payload.assign(msg->payload.begin(), msg->payload.end());
+            unreliable_count.fetch_add(1, std::memory_order_release);
+        });
+    server.router().mark_ready();
+    server.start();
+
+    boost::asio::io_context client_ioc;
+    KcpTestClient client(client_ioc, /*conv=*/1);
+    client.set_remote(boost::asio::ip::udp::endpoint(
+        boost::asio::ip::address_v4::loopback(), server.listen_port()));
+
+    // 鉴权（建立 KCP 连接 + UdpListener route 注册）
+    client.send(make_auth_login_frame("dev:42", 1));
+    channel::Bytes auth_framed;
+    ASSERT_TRUE(client.recv(auth_framed, std::chrono::seconds(3)));
+    ::beast::net::Envelope auth_envelope;
+    ASSERT_TRUE(parse_framed_envelope(auth_framed, auth_envelope));
+    EXPECT_EQ(auth_envelope.route(), "auth.login.response");
+
+    // 发送旁路不可靠帧（raw UDP，绕过 ikcp_send）
+    transport::UnreliableFrame frame{
+        .magic = transport::kUnreliableFrameMagic,
+        .route_id = outbound::OutboundRouteRegistry::route_id_hash("test.unreliable"),
+        .seq = 1,
+        .payload = {0xDE, 0xAD, 0xBE, 0xEF},
+    };
+    client.send_raw(transport::encode_unreliable_frame(frame));
+
+    // 等待 handler 触发
+    for (int i = 0; i < 200 && unreliable_count.load(std::memory_order_acquire) == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    EXPECT_EQ(unreliable_count.load(), 1);
+    EXPECT_EQ(received_payload, (std::vector<std::uint8_t>{0xDE, 0xAD, 0xBE, 0xEF}));
+
+    server.stop();
+}
+
+TEST(KcpLoopbackTest, UnreliableFrameLatestWinsFiltersOldSeq) {
+    core::init_log({.level = "warn"});
+
+    core::config::KcpConfig config;
+    config.port = 0;
+    config.unreliable.enabled = true;
+
+    net::server::KcpServer server(config);
+
+    auto registry = std::make_shared<outbound::OutboundRouteRegistry>();
+    registry->declare("test.unreliable", outbound::RouteReliability::Unreliable);
+    server.set_route_reliability_registry(registry);
+
+    std::atomic<int> deliver_count{0};
+    std::uint32_t last_delivered_seq = 0;
+    server.router().register_route(
+        "test.unreliable",
+        [&](net::channel::ChannelHandlerContext& /*ctx*/, const net::channel::MessagePtr& msg) {
+            // payload 前 4 字节存 seq（测试用）
+            if (msg->payload.size() >= 4) {
+                last_delivered_seq = (static_cast<std::uint32_t>(msg->payload[0]) << 24) |
+                                     (static_cast<std::uint32_t>(msg->payload[1]) << 16) |
+                                     (static_cast<std::uint32_t>(msg->payload[2]) << 8) |
+                                     static_cast<std::uint32_t>(msg->payload[3]);
+            }
+            deliver_count.fetch_add(1, std::memory_order_release);
+        });
+    server.router().mark_ready();
+    server.start();
+
+    boost::asio::io_context client_ioc;
+    KcpTestClient client(client_ioc, /*conv=*/1);
+    client.set_remote(boost::asio::ip::udp::endpoint(
+        boost::asio::ip::address_v4::loopback(), server.listen_port()));
+
+    // 鉴权
+    client.send(make_auth_login_frame("dev:42", 1));
+    channel::Bytes auth_framed;
+    ASSERT_TRUE(client.recv(auth_framed, std::chrono::seconds(3)));
+
+    const auto route_hash = outbound::OutboundRouteRegistry::route_id_hash("test.unreliable");
+
+    // 发 seq=5（应该被接收）
+    {
+        transport::UnreliableFrame f{
+            .magic = transport::kUnreliableFrameMagic,
+            .route_id = route_hash,
+            .seq = 5,
+            .payload = {0x00, 0x00, 0x00, 0x05},
+        };
+        client.send_raw(transport::encode_unreliable_frame(f));
+    }
+    // 发 seq=3（旧帧，应该被丢弃）
+    {
+        transport::UnreliableFrame f{
+            .magic = transport::kUnreliableFrameMagic,
+            .route_id = route_hash,
+            .seq = 3,
+            .payload = {0x00, 0x00, 0x00, 0x03},
+        };
+        client.send_raw(transport::encode_unreliable_frame(f));
+    }
+    // 发 seq=10（新帧，应该被接收）
+    {
+        transport::UnreliableFrame f{
+            .magic = transport::kUnreliableFrameMagic,
+            .route_id = route_hash,
+            .seq = 10,
+            .payload = {0x00, 0x00, 0x00, 0x0A},
+        };
+        client.send_raw(transport::encode_unreliable_frame(f));
+    }
+
+    // 等待处理
+    for (int i = 0; i < 300 && deliver_count.load(std::memory_order_acquire) < 2; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    // seq=5 和 seq=10 应该被接收（deliver_count=2），seq=3 应该被丢弃
+    EXPECT_EQ(deliver_count.load(), 2);
+    EXPECT_EQ(last_delivered_seq, 10u);
 
     server.stop();
 }

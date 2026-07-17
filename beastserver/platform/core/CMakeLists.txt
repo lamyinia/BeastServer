@@ -2,29 +2,9 @@ find_package(spdlog REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(GTest REQUIRED)
 
-add_library(beast_core STATIC
-    src/log/logger.cpp
-    src/time.cpp
-    src/id_generator.cpp
-    src/config/server_config_json.cpp
-    src/config/plugins_config.cpp
-)
-
-add_library(beast::core ALIAS beast_core)
-
-target_include_directories(beast_core
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-)
-
-target_link_libraries(beast_core
-    PUBLIC
-        spdlog::spdlog
-        nlohmann_json::nlohmann_json
-)
-
-target_compile_features(beast_core PUBLIC cxx_std_20)
+beast_add_library(core
+    GLOB src/*.cpp
+    DEPS spdlog::spdlog nlohmann_json::nlohmann_json)
 
 enable_testing()
 

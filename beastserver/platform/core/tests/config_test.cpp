@@ -136,5 +136,252 @@ TEST(ServerConfigTest, IgnoresUnknownGameSection) {
     EXPECT_EQ(result.value().host, "127.0.0.1");
 }
 
+// ========== TLS / KCP 加密配置测试 ==========
+
+TEST(ServerConfigTest, ParsesTcpTlsConfig) {
+    const auto temp = std::filesystem::temp_directory_path() / "beastserver-tls-parse-test.json";
+    std::ofstream out(temp);
+    out << R"({
+      "server": {
+        "host": "127.0.0.1",
+        "grpc": { "port": 9010 },
+        "debug": { "enabled": true },
+        "auth": { "mode": "dev" },
+        "net": {
+          "tcp": {
+            "port": 8010,
+            "tls": {
+              "enabled": true,
+              "cert_path": "/etc/beast/server.crt",
+              "key_path": "/etc/beast/server.key",
+              "min_version": "TLSv1.3",
+              "cipher_list": "ECDHE-RSA-AES256-GCM-SHA384"
+            }
+          }
+        }
+      }
+    })";
+    out.close();
+
+    auto result = load_server_config_from_file(temp.string());
+    ASSERT_TRUE(result.ok()) << result.error().to_string();
+    const auto& tls = result.value().net.tcp.tls;
+    EXPECT_TRUE(tls.enabled);
+    EXPECT_EQ(tls.cert_path, "/etc/beast/server.crt");
+    EXPECT_EQ(tls.key_path, "/etc/beast/server.key");
+    EXPECT_EQ(tls.min_version, "TLSv1.3");
+    EXPECT_EQ(tls.cipher_list, "ECDHE-RSA-AES256-GCM-SHA384");
+}
+
+TEST(ServerConfigTest, ParsesKcpCryptoConfig) {
+    const auto temp = std::filesystem::temp_directory_path() / "beastserver-kcp-crypto-test.json";
+    std::ofstream out(temp);
+    out << R"({
+      "server": {
+        "host": "127.0.0.1",
+        "grpc": { "port": 9010 },
+        "debug": { "enabled": true },
+        "auth": { "mode": "dev" },
+        "net": {
+          "kcp": {
+            "port": 8010,
+            "crypto": {
+              "mode": "psk_aes_gcm",
+              "tag_bytes": 16,
+              "encrypt_bypass": true
+            }
+          }
+        }
+      }
+    })";
+    out.close();
+
+    auto result = load_server_config_from_file(temp.string());
+    ASSERT_TRUE(result.ok()) << result.error().to_string();
+    const auto& crypto = result.value().net.kcp.crypto;
+    EXPECT_EQ(crypto.mode, KcpCryptoMode::PskAesGcm);
+    EXPECT_TRUE(crypto.enabled());
+    EXPECT_EQ(crypto.tag_bytes, 16u);
+    EXPECT_TRUE(crypto.encrypt_bypass);
+}
+
+TEST(ServerConfigTest, RejectsInvalidKcpCryptoMode) {
+    const auto temp = std::filesystem::temp_directory_path() / "beastserver-bad-crypto-mode.json";
+    std::ofstream out(temp);
+    out << R"({
+      "server": {
+        "host": "127.0.0.1",
+        "grpc": { "port": 9010 },
+        "debug": { "enabled": true },
+        "auth": { "mode": "dev" },
+        "net": {
+          "kcp": {
+            "port": 8010,
+            "crypto": { "mode": "bogus" }
+          }
+        }
+      }
+    })";
+    out.close();
+
+    auto result = load_server_config_from_file(temp.string());
+    ASSERT_FALSE(result.ok());
+    EXPECT_NE(result.error().to_string().find("kcp.crypto.mode"), std::string::npos);
+}
+
+TEST(ServerConfigTest, RejectsTlsEnabledWithoutCert) {
+    const auto temp = std::filesystem::temp_directory_path() / "beastserver-tls-no-cert.json";
+    std::ofstream out(temp);
+    out << R"({
+      "server": {
+        "host": "127.0.0.1",
+        "grpc": { "port": 9010 },
+        "debug": { "enabled": true },
+        "auth": { "mode": "dev" },
+        "net": {
+          "tcp": {
+            "port": 8010,
+            "tls": { "enabled": true, "cert_path": "", "key_path": "" }
+          }
+        }
+      }
+    })";
+    out.close();
+
+    auto result = load_server_config_from_file(temp.string());
+    ASSERT_FALSE(result.ok());
+    EXPECT_NE(result.error().to_string().find("cert_path"), std::string::npos);
+}
+
+TEST(ServerConfigTest, RejectsTlsInvalidMinVersion) {
+    const auto temp = std::filesystem::temp_directory_path() / "beastserver-tls-bad-version.json";
+    std::ofstream out(temp);
+    out << R"({
+      "server": {
+        "host": "127.0.0.1",
+        "grpc": { "port": 9010 },
+        "debug": { "enabled": true },
+        "auth": { "mode": "dev" },
+        "net": {
+          "tcp": {
+            "port": 8010,
+            "tls": {
+              "enabled": true,
+              "cert_path": "/x.crt",
+              "key_path": "/x.key",
+              "min_version": "SSLv3"
+            }
+          }
+        }
+      }
+    })";
+    out.close();
+
+    auto result = load_server_config_from_file(temp.string());
+    ASSERT_FALSE(result.ok());
+    EXPECT_NE(result.error().to_string().find("min_version"), std::string::npos);
+}
+
+TEST(ServerConfigTest, ProductionForcesTcpTls) {
+    const auto temp = std::filesystem::temp_directory_path() / "beastserver-prod-no-tls.json";
+    std::ofstream out(temp);
+    out << R"({
+      "server": {
+        "host": "127.0.0.1",
+        "grpc": { "port": 9010 },
+        "debug": { "enabled": false },
+        "auth": { "mode": "jwt", "jwt": { "hmac_secret": "test-secret" } },
+        "net": {
+          "tcp": { "port": 8010 }
+        }
+      }
+    })";
+    out.close();
+
+    auto result = load_server_config_from_file(temp.string());
+    ASSERT_FALSE(result.ok());
+    EXPECT_NE(result.error().to_string().find("tcp.tls.enabled must be true"), std::string::npos);
+}
+
+TEST(ServerConfigTest, ProductionForcesKcpCrypto) {
+    const auto temp = std::filesystem::temp_directory_path() / "beastserver-prod-no-kcp-crypto.json";
+    std::ofstream out(temp);
+    out << R"({
+      "server": {
+        "host": "127.0.0.1",
+        "grpc": { "port": 9010 },
+        "debug": { "enabled": false },
+        "auth": { "mode": "jwt", "jwt": { "hmac_secret": "test-secret" } },
+        "net": {
+          "tcp": {
+            "port": 8010,
+            "tls": { "enabled": true, "cert_path": "/x.crt", "key_path": "/x.key" }
+          },
+          "kcp": { "port": 8010 }
+        }
+      }
+    })";
+    out.close();
+
+    auto result = load_server_config_from_file(temp.string());
+    ASSERT_FALSE(result.ok());
+    EXPECT_NE(result.error().to_string().find("kcp.crypto.mode"), std::string::npos);
+}
+
+TEST(ServerConfigTest, ProductionAllowsEncryptedTransport) {
+    const auto temp = std::filesystem::temp_directory_path() / "beastserver-prod-encrypted.json";
+    std::ofstream out(temp);
+    out << R"({
+      "server": {
+        "host": "127.0.0.1",
+        "grpc": { "port": 9010 },
+        "debug": { "enabled": false },
+        "auth": { "mode": "jwt", "jwt": { "hmac_secret": "test-secret" } },
+        "net": {
+          "tcp": {
+            "port": 8010,
+            "tls": { "enabled": true, "cert_path": "/x.crt", "key_path": "/x.key" }
+          },
+          "kcp": {
+            "port": 8010,
+            "crypto": { "mode": "psk_aes_gcm" }
+          }
+        }
+      }
+    })";
+    out.close();
+
+    auto result = load_server_config_from_file(temp.string());
+    ASSERT_TRUE(result.ok()) << result.error().to_string();
+}
+
+TEST(ServerConfigTest, DefaultsTcpTlsDisabled) {
+    const auto temp = std::filesystem::temp_directory_path() / "beastserver-default-tls.json";
+    std::ofstream out(temp);
+    out << R"({
+      "server": {
+        "host": "127.0.0.1",
+        "grpc": { "port": 9010 },
+        "debug": { "enabled": true },
+        "auth": { "mode": "dev" },
+        "net": {
+          "tcp": { "port": 8010 },
+          "kcp": { "port": 8010 }
+        }
+      }
+    })";
+    out.close();
+
+    auto result = load_server_config_from_file(temp.string());
+    ASSERT_TRUE(result.ok()) << result.error().to_string();
+    EXPECT_FALSE(result.value().net.tcp.tls.enabled);
+    EXPECT_EQ(result.value().net.kcp.crypto.mode, KcpCryptoMode::None);
+    EXPECT_FALSE(result.value().net.kcp.crypto.enabled());
+    // 默认值检查
+    EXPECT_EQ(result.value().net.tcp.tls.min_version, "TLSv1.2");
+    EXPECT_EQ(result.value().net.kcp.crypto.tag_bytes, 16u);
+    EXPECT_TRUE(result.value().net.kcp.crypto.encrypt_bypass);
+}
+
 } // namespace
 } // namespace beast::platform::core::config

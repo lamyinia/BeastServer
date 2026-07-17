@@ -2,15 +2,8 @@ find_package(GTest REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
 
 beast_add_library(bizutil
-    SOURCES
-        src/config/loader.cpp
-        src/config/manifest.cpp
-        src/config/paths.cpp
-        src/config/result.cpp
-        src/config/store.cpp
-    DEPS
-        beast::core
-        protobuf::libprotobuf)
+    GLOB src/*.cpp
+    DEPS beast::core protobuf::libprotobuf)
 
 set(_bizutil_test_proto_dir "${CMAKE_CURRENT_BINARY_DIR}/test_proto")
 beast_generate_protobuf(

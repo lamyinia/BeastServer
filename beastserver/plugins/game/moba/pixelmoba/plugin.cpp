@@ -56,4 +56,9 @@ BEAST_PLUGIN_EXPORT void beast_plugin_init(beast::platform::plugin::ServerContex
 
     // 3) 注册局内 c2s 路由。
     register_pixel_moba_routes(ctx);
+
+    // 4) 声明 Tier1 高频同步路由为 Unreliable：走 KCP 旁路子通道（latest-wins，无重传）。
+    //    仅对 KCP 通道生效；TCP 通道自动回退可靠路径。
+    ctx.declare_outbound_route("pixelmoba.transform", beast::platform::net::outbound::RouteReliability::Unreliable);
+    ctx.declare_outbound_route("pixelmoba.projectile", beast::platform::net::outbound::RouteReliability::Unreliable);
 }

@@ -3,6 +3,7 @@
 #include "beast/platform/core/log/logger.hpp"
 #include "beast/platform/net/auth/auth_verifier.hpp"
 #include "beast/platform/net/channel/kcp_channel.hpp"
+#include "beast/platform/net/outbound/unreliable_receiver.hpp"
 #include "beast/platform/net/transport/kcp_transport.hpp"
 
 #include <boost/asio/ip/udp.hpp>
@@ -37,6 +38,11 @@ KcpServer::KcpServer(
             .interval = config_.interval,
             .resend = config_.resend,
             .nc = config_.nc,
+            .crypto = {
+                .enabled = config_.crypto.enabled(),
+                .tag_bytes = config_.crypto.tag_bytes,
+                .encrypt_bypass = config_.crypto.encrypt_bypass,
+            },
         },
         auth::make_auth_verifier(auth_config_));
     outbound_hub_ = std::make_shared<outbound::OutboundHub>(ioc, session_manager_);
@@ -116,6 +122,18 @@ void KcpServer::on_new_peer(const boost::asio::ip::udp::endpoint& peer, std::vec
     transport->set_remote_endpoint(peer);
 
     auto channel = std::make_shared<channel::KcpChannel>(transport);
+
+    // 旁路接收：route_reliability_ + config_.unreliable.enabled 双条件满足时创建 per-channel UnreliableReceiver，
+    // wire 到 KcpChannel::on_unreliable_bytes_。transport demux 后的旁路帧经 receiver
+    // decode + reverse-lookup + latest-wins 过滤后 feed 到 pipeline（与可靠路径同 strand）。
+    if (route_reliability_ && config_.unreliable.enabled) {
+        auto receiver = std::make_shared<outbound::UnreliableReceiver>(route_reliability_);
+        auto* pipeline_ptr = &channel->pipeline();
+        channel->set_on_unreliable_bytes(
+            [receiver, pipeline_ptr](channel::IChannel::Bytes&& data) {
+                receiver->process(std::move(data), *pipeline_ptr);
+            });
+    }
 
     // 注册后续数据注入：UdpListener 收到该 peer 的包时转发给 transport。
     auto transport_weak = std::weak_ptr<transport::KcpTransport>(transport);
