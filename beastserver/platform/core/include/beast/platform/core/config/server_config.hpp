@@ -252,6 +252,10 @@ struct AiConfigSettings {
     std::unordered_map<std::string, AiProviderSettings> providers;
     std::vector<AiFallbackSettings> fallbacks;
     AiTosSettings tos;
+    // HttpClient (libcurl multi) 连接数限制。0 表示用 libcurl 默认值。
+    // 调大以支持高并发 AI 请求（如单 instance burst 上千 request）。
+    int max_total_connections = 0;
+    int max_host_connections = 0;
 };
 
 // 策划表 runtime 目录；表数据本身在 bizconfig 导出产物中，不在 server.json。

@@ -274,6 +274,9 @@ void parse_ai(const nlohmann::json& root, AiConfigSettings& out) {
     if (ai.contains("tos") && ai.at("tos").is_object()) {
         parse_ai_tos(ai.at("tos"), out.tos);
     }
+
+    assign_if_present(ai, "max_total_connections", out.max_total_connections);
+    assign_if_present(ai, "max_host_connections", out.max_host_connections);
 }
 
 void parse_auth(const nlohmann::json& server, AuthConfig& out) {
@@ -436,7 +439,7 @@ std::optional<std::string> validate_server_config(const ServerConfig& config) {
     return std::filesystem::current_path();
 }
 
-// CLion / IDE 常从 build/RelWithDebInfo 启动，cwd 下没有 config/；按可执行文件位置回退到源码树。
+// CLion / IDE 常从 build/ 启动，cwd 下没有 config/；按可执行文件位置回退到源码树。
 [[nodiscard]] std::filesystem::path resolve_config_path(const std::filesystem::path& requested) {
     namespace fs = std::filesystem;
     std::error_code ec;

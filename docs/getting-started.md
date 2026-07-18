@@ -54,31 +54,31 @@ Conan 会自动拉取并静态链接以下依赖（版本见 `beastserver/conanf
 cd beastserver
 
 # 1. 安装 Conan 依赖
-conan install . --output-folder=build/RelWithDebInfo --build=missing -s build_type=RelWithDebInfo
+conan install . --output-folder=build --build=missing -s build_type=RelWithDebInfo
 
 # 2. 配置 CMake
-cmake -S . -B build/RelWithDebInfo \
-  -DCMAKE_TOOLCHAIN_FILE=build/RelWithDebInfo/conan_toolchain.cmake \
+cmake -S . -B build \
+  -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
 # 3. 编译（全量）
-cmake --build build/RelWithDebInfo -j$(nproc)
+cmake --build build -j$(nproc)
 
 # 仅编主程序（会顺带重编所有 beast_plugin_*，推荐日常开发）
-cmake --build build/RelWithDebInfo --target beastserver -j$(nproc)
+cmake --build build --target beastserver -j$(nproc)
 ```
 
 ## 运行
 
 ```bash
 # 默认配置
-./build/RelWithDebInfo/beastserver
+./build/beastserver
 
 # 指定配置文件
-./build/RelWithDebInfo/beastserver config/server.json
+./build/beastserver config/server.json
 
 # 覆盖插件目录（开发时 .so 在 build 目录）
-BEAST_PLUGINS_DIR=build/RelWithDebInfo/plugins ./build/RelWithDebInfo/beastserver
+BEAST_PLUGINS_DIR=build/plugins ./build/beastserver
 ```
 
 `Ctrl+C` / `SIGTERM` 触发优雅停止。
@@ -86,7 +86,7 @@ BEAST_PLUGINS_DIR=build/RelWithDebInfo/plugins ./build/RelWithDebInfo/beastserve
 启动成功时应看到类似日志：
 
 ```
-GameServer starting … plugins_dir=…/build/RelWithDebInfo/plugins
+GameServer starting … plugins_dir=…/build/plugins
 PluginHost loaded engines=2 custom_routes=2
 TcpServer listening on port …
 GameServer ready … gameplay_count=2
@@ -96,8 +96,8 @@ GameServer ready … gameplay_count=2
 
 | 产物 | 说明 |
 |------|------|
-| `build/RelWithDebInfo/beastserver` | 可执行服务器 |
-| `build/RelWithDebInfo/plugins/beast_plugin_*.so` | 所有插件共享库 |
+| `build/beastserver` | 可执行服务器 |
+| `build/plugins/beast_plugin_*.so` | 所有插件共享库 |
 
 ## 主程序与插件构建关系
 
@@ -114,7 +114,7 @@ GameServer ready … gameplay_count=2
 ## 测试
 
 ```bash
-ctest --test-dir build/RelWithDebInfo --output-on-failure
+ctest --test-dir build --output-on-failure
 ```
 
 覆盖：配置解析、Pipeline 编解码、TCP/KCP/WebSocket 回环、Session 绑定、Event/Loop Carrier、Timer、PluginHost、GameServer 集成等。

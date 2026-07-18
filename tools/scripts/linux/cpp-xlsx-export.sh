@@ -3,9 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-BUILD_TYPE="${BUILD_TYPE:-RelWithDebInfo}"
 
-OUT_ROOT="${REPO_ROOT}/beastserver/build/${BUILD_TYPE}/bizconfig"
+OUT_ROOT="${REPO_ROOT}/beastserver/build/bizconfig"
 RAW_DIR="${REPO_ROOT}/bizconfig/static-xlsx"
 SCHEMA_DIR="${REPO_ROOT}/bizconfig/scheme"
 EXPORT_BIN="${REPO_ROOT}/tools/biz_export/biz_export"

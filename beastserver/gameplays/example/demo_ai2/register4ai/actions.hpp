@@ -1,6 +1,6 @@
 #pragma once
 
-#include "beast/platform/engine/ai/ai_json_decision.hpp"
+#include "beast/mixin/ai/ai_json_decision.hpp"
 #include "register4ai/decisions.hpp"
 
 #include <nlohmann/json.hpp>
@@ -23,9 +23,9 @@ struct AckAction {
         return {"除 action 外无其它字段"};
     }
 
-    [[nodiscard]] static beast::platform::engine::ai::JsonParseResult<AckAction> parse_json(
+    [[nodiscard]] static beast::mixin::ai::JsonParseResult<AckAction> parse_json(
         const nlohmann::json& /*object*/) {
-        return beast::platform::engine::ai::JsonParseResult<AckAction>::success(AckAction{});
+        return beast::mixin::ai::JsonParseResult<AckAction>::success(AckAction{});
     }
 };
 
@@ -47,10 +47,10 @@ struct PickRouteAction {
         return {"route_id 必须是 observation 中 pick_route.options 的 option_id"};
     }
 
-    [[nodiscard]] static beast::platform::engine::ai::JsonParseResult<PickRouteAction> parse_json(
+    [[nodiscard]] static beast::mixin::ai::JsonParseResult<PickRouteAction> parse_json(
         const nlohmann::json& object) {
-        using beast::platform::engine::ai::JsonObjectReader;
-        using Result = beast::platform::engine::ai::JsonParseResult<PickRouteAction>;
+        using beast::mixin::ai::JsonObjectReader;
+        using Result = beast::mixin::ai::JsonParseResult<PickRouteAction>;
 
         JsonObjectReader reader(object);
         PickRouteAction action;
@@ -102,10 +102,10 @@ struct SquadPlanAction {
         return {"plan_id 必须是 observation 中 squad_plan.options 的 option_id"};
     }
 
-    [[nodiscard]] static beast::platform::engine::ai::JsonParseResult<SquadPlanAction> parse_json(
+    [[nodiscard]] static beast::mixin::ai::JsonParseResult<SquadPlanAction> parse_json(
         const nlohmann::json& object) {
-        using beast::platform::engine::ai::JsonObjectReader;
-        using Result = beast::platform::engine::ai::JsonParseResult<SquadPlanAction>;
+        using beast::mixin::ai::JsonObjectReader;
+        using Result = beast::mixin::ai::JsonParseResult<SquadPlanAction>;
 
         JsonObjectReader reader(object);
         SquadPlanAction action;
@@ -181,10 +181,10 @@ struct LoadoutAction {
         return {"loadout_id 必须是 observation 中 loadout.options 的 option_id"};
     }
 
-    [[nodiscard]] static beast::platform::engine::ai::JsonParseResult<LoadoutAction> parse_json(
+    [[nodiscard]] static beast::mixin::ai::JsonParseResult<LoadoutAction> parse_json(
         const nlohmann::json& object) {
-        using beast::platform::engine::ai::JsonObjectReader;
-        using Result = beast::platform::engine::ai::JsonParseResult<LoadoutAction>;
+        using beast::mixin::ai::JsonObjectReader;
+        using Result = beast::mixin::ai::JsonParseResult<LoadoutAction>;
 
         JsonObjectReader reader(object);
         LoadoutAction action;

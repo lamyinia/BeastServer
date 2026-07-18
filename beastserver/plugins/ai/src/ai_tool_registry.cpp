@@ -1,13 +1,13 @@
-#include "beast/platform/engine/ai/ai_tool_registry.hpp"
+#include "beast/mixin/ai/ai_tool_registry.hpp"
 
 #include "beast/platform/core/log/logger.hpp"
-#include "beast/platform/engine/ai/instance_ai_facade.hpp"
+#include "beast/mixin/ai/instance_ai_facade.hpp"
 
-#include "beast/platform/engine/ai/ai_declarative.hpp"
+#include "beast/mixin/ai/ai_declarative.hpp"
 
 #include "ai_event.pb.h"
 
-namespace beast::platform::engine::ai {
+namespace beast::mixin::ai {
 
 void AiToolRegistry::add_tool(platform::ai::ToolDef def, AiToolHandler handler) {
     handlers_[def.function.name] = std::move(handler);
@@ -46,4 +46,4 @@ bool submit_registry_tool_result(
         result_json);
 }
 
-} // namespace beast::platform::engine::ai
+} // namespace beast::mixin::ai

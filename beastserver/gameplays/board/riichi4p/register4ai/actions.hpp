@@ -1,6 +1,6 @@
 #pragma once
 
-#include "beast/platform/engine/ai/ai_json_decision.hpp"
+#include "beast/mixin/ai/ai_json_decision.hpp"
 #include "register4ai/decisions/suggest_turn_action_decision.hpp"
 
 #include <nlohmann/json.hpp>
@@ -28,10 +28,10 @@ struct DiscardAction {
         return {"action_id 必须是 legal_actions 中 kind=discard 的一项"};
     }
 
-    [[nodiscard]] static beast::platform::engine::ai::JsonParseResult<DiscardAction> parse_json(
+    [[nodiscard]] static beast::mixin::ai::JsonParseResult<DiscardAction> parse_json(
         const nlohmann::json& object) {
-        using beast::platform::engine::ai::JsonObjectReader;
-        using Result = beast::platform::engine::ai::JsonParseResult<DiscardAction>;
+        using beast::mixin::ai::JsonObjectReader;
+        using Result = beast::mixin::ai::JsonParseResult<DiscardAction>;
 
         JsonObjectReader reader(object);
         DiscardAction action;
@@ -67,10 +67,10 @@ struct RiichiAction {
         return {"action_id 必须是 legal_actions 中 kind=riichi 的一项"};
     }
 
-    [[nodiscard]] static beast::platform::engine::ai::JsonParseResult<RiichiAction> parse_json(
+    [[nodiscard]] static beast::mixin::ai::JsonParseResult<RiichiAction> parse_json(
         const nlohmann::json& object) {
-        using beast::platform::engine::ai::JsonObjectReader;
-        using Result = beast::platform::engine::ai::JsonParseResult<RiichiAction>;
+        using beast::mixin::ai::JsonObjectReader;
+        using Result = beast::mixin::ai::JsonParseResult<RiichiAction>;
 
         JsonObjectReader reader(object);
         RiichiAction action;

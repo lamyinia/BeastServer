@@ -1,8 +1,8 @@
 #pragma once
 
-#include "beast/platform/engine/ai/ai_delivery.hpp"
-#include "beast/platform/engine/ai/engine_ai_host.hpp"
-#include "beast/platform/engine/capability/ai_capability_mixin.hpp"
+#include "beast/mixin/ai/ai_delivery.hpp"
+#include "beast/mixin/ai/engine_ai_host.hpp"
+#include "beast/mixin/ai/capability/ai_capability_mixin.hpp"
 #include "beast/platform/engine/capability/engine_root.hpp"
 #include "engine/table_state.hpp"
 #include "register4ai/actions.hpp"
@@ -20,20 +20,20 @@ inline constexpr const char* kBotPlayerId = "1";
 class Riichi4pEngine final
     : public beast::platform::engine::capability::EngineRoot<
           Riichi4pEngine,
-          beast::platform::engine::ai::AiCapabilityMixin> {
+          beast::mixin::ai::AiCapabilityMixin> {
 public:
-    [[nodiscard]] beast::platform::engine::ai::EngineAiHost& ai_host() noexcept {
+    [[nodiscard]] beast::mixin::ai::EngineAiHost& ai_host() noexcept {
         return ai_host_;
     }
-    [[nodiscard]] const beast::platform::engine::ai::EngineAiHost& ai_host() const noexcept {
+    [[nodiscard]] const beast::mixin::ai::EngineAiHost& ai_host() const noexcept {
         return ai_host_;
     }
 
-    [[nodiscard]] beast::platform::engine::ai::AiReplyTarget ai_relay_target() const;
+    [[nodiscard]] beast::mixin::ai::AiReplyTarget ai_relay_target() const;
 
-    void register_ai_function_tools(beast::platform::engine::ai::AiToolRegistry& /*tools*/) {}
-    void register_ai_receipts(beast::platform::engine::ai::EngineAiHost& /*host*/) {}
-    void register_ai_decisions(beast::platform::engine::ai::EngineAiHost& host) {
+    void register_ai_function_tools(beast::mixin::ai::AiToolRegistry& /*tools*/) {}
+    void register_ai_receipts(beast::mixin::ai::EngineAiHost& /*host*/) {}
+    void register_ai_decisions(beast::mixin::ai::EngineAiHost& host) {
         register4ai::register_decisions(*this, host);
     }
 
@@ -63,7 +63,7 @@ private:
         beast::platform::ai::AiRequestId request_id);
     void run_on_start_turn_action_demo();
 
-    beast::platform::engine::ai::EngineAiHost ai_host_;
+    beast::mixin::ai::EngineAiHost ai_host_;
     RiichiTableState table_;
 };
 

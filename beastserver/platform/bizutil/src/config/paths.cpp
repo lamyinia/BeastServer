@@ -27,6 +27,7 @@ namespace fs = std::filesystem;
     const fs::path& repo_root,
     const fs::path& configured_relative) {
     const fs::path candidates[] = {
+        repo_root / "build/bizconfig/server",
         repo_root / "build/RelWithDebInfo/bizconfig/server",
         repo_root / configured_relative,
         fs::current_path() / "bizconfig/server",

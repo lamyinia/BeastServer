@@ -24,14 +24,14 @@ pip install --user 'conan>=2.0'
 
 # 构建
 cd beastserver
-conan install . --output-folder=build/RelWithDebInfo --build=missing -s build_type=RelWithDebInfo
-cmake -S . -B build/RelWithDebInfo \
-  -DCMAKE_TOOLCHAIN_FILE=build/RelWithDebInfo/conan_toolchain.cmake \
+conan install . --output-folder=build --build=missing -s build_type=RelWithDebInfo
+cmake -S . -B build \
+  -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build/RelWithDebInfo -j$(nproc)
+cmake --build build -j$(nproc)
 
 # 运行
-./build/RelWithDebInfo/beastserver
+./build/beastserver
 ```
 
 详细步骤见 [快速开始](docs/getting-started.md)。
@@ -91,7 +91,7 @@ BeastServer-project/
 ## 测试
 
 ```bash
-ctest --test-dir build/RelWithDebInfo --output-on-failure
+ctest --test-dir build --output-on-failure
 ```
 
 ## License

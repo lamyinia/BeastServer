@@ -1,8 +1,8 @@
-#include "beast/platform/engine/ai/engine_ai_events.hpp"
+#include "beast/mixin/ai/engine_ai_events.hpp"
 
-#include "beast/platform/engine/ai/engine_ai_host.hpp"
+#include "beast/mixin/ai/engine_ai_host.hpp"
 
-namespace beast::platform::engine::ai {
+namespace beast::mixin::ai {
 
 void EngineAiEvents::on_route(const RouteId route, AiRouteHandler handler) {
     routes_[route] = std::move(handler);
@@ -16,4 +16,4 @@ bool EngineAiEvents::try_route(EngineAiHost& host, const instance::InstanceEvent
     return it->second(host, event);
 }
 
-} // namespace beast::platform::engine::ai
+} // namespace beast::mixin::ai

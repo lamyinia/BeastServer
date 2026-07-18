@@ -74,7 +74,6 @@ bool InstanceManager::create_instance(
     ctx.set_notify_end_fn([this, instance_id]() { on_instance_ended(instance_id); });
     ctx.set_timer_service(timer_service_);
     ctx.set_biz_config_store(biz_config_store_);
-    ctx.set_instance_ai(instance_ai_);
 
     auto instance = std::make_unique<Instance>(
         instance_id,

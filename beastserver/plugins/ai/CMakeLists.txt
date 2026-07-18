@@ -1,5 +1,5 @@
 # AI 集成层：InstanceAiFacade / EngineAiHost / AiToolRegistry 等
-# 从 platform/engine/ 迁移，保留 beast::platform::engine::ai 命名空间。
+# 命名空间 beast::mixin::ai（plugins/ 下 mixin 类插件统一约定）。
 # 静态库供 platform_ai 插件、server 及集成测试链接。
 beast_add_library(ai_integration
     GLOB src/*.cpp

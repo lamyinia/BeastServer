@@ -23,10 +23,12 @@ CurlGlobal& curl_global_singleton() {
     return g;
 }
 
+// posix::stream_descriptor 只允许一个未决 async_wait；
+// 当 action==CURL_POLL_INOUT 时用 last_wait 交替等待读/写，避免饥饿。
 struct CurlSocket {
-    explicit CurlSocket(net::io_context& ioc, const curl_socket_t s)
+    explicit CurlSocket(const net::any_io_executor& ex, const curl_socket_t s)
         : sock(s)
-        , stream(ioc) {
+        , stream(ex) {
         stream.assign(s);
     }
 
@@ -34,13 +36,14 @@ struct CurlSocket {
     net::posix::stream_descriptor stream;
     int action = 0;
     bool watching = false;
+    int last_wait = 0;
 };
 
 enum class Mode { FullResponse, SseStream };
 
 struct RequestCtx {
-    explicit RequestCtx(net::io_context& ioc)
-        : sse_timer(ioc) {}
+    explicit RequestCtx(const net::any_io_executor& ex)
+        : sse_timer(ex) {}
 
     CURL* easy = nullptr;
     std::weak_ptr<RequestCtx> self_weak;
@@ -65,10 +68,12 @@ struct RequestCtx {
 } // namespace
 
 struct HttpClientImpl {
-    explicit HttpClientImpl(HttpClient& owner, net::io_context& ioc)
+    explicit HttpClientImpl(HttpClient& owner, net::io_context& ioc, HttpClientLimits limits)
         : self(owner)
         , ioc_(ioc)
-        , timer_(ioc) {
+        , strand_(ioc_.get_executor())
+        , timer_(strand_)
+        , limits_(limits) {
         curl_global_singleton();
         multi_ = curl_multi_init();
         if (!multi_) {
@@ -79,8 +84,14 @@ struct HttpClientImpl {
         curl_multi_setopt(multi_, CURLMOPT_SOCKETDATA, this);
         curl_multi_setopt(multi_, CURLMOPT_TIMERFUNCTION, &HttpClientImpl::timer_cb);
         curl_multi_setopt(multi_, CURLMOPT_TIMERDATA, this);
-        curl_multi_setopt(multi_, CURLMOPT_MAX_TOTAL_CONNECTIONS, 64L);
-        curl_multi_setopt(multi_, CURLMOPT_MAX_HOST_CONNECTIONS, 8L);
+        // 0 表示不显式设置，用 libcurl 默认值（MAX_TOTAL=0 / MAX_HOST=0 即无显式上限，
+        // 但 libcurl 内部仍受 CURLMOPT_MAXCONNECTS 缓存上限约束）。
+        if (limits_.max_total_connections > 0) {
+            curl_multi_setopt(multi_, CURLMOPT_MAX_TOTAL_CONNECTIONS, limits_.max_total_connections);
+        }
+        if (limits_.max_host_connections > 0) {
+            curl_multi_setopt(multi_, CURLMOPT_MAX_HOST_CONNECTIONS, limits_.max_host_connections);
+        }
 #ifdef CURLPIPE_MULTIPLEX
         curl_multi_setopt(multi_, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
 #endif
@@ -94,8 +105,20 @@ struct HttpClientImpl {
         OnError on_err;
     };
 
+    // 析构时 io_context 通常已停止，无法再 post 到 strand；
+    // 因此同步清理所有资源，避免与 strand 上的操作并发。
     ~HttpClientImpl() {
-        cancel_all();
+        for (auto& [easy, ctx] : active_) {
+            if (!ctx) {
+                continue;
+            }
+            cleanup_easy(*ctx);
+        }
+        active_.clear();
+        in_flight_ = 0;
+        pending_.clear();
+        sockets_.clear();
+
         if (multi_) {
             curl_multi_cleanup(multi_);
             multi_ = nullptr;
@@ -118,8 +141,10 @@ struct HttpClientImpl {
         OnResponse on_resp,
         OnSseChunk on_sse,
         OnError on_err) {
-        net::post(ioc_, [this, req = std::move(req), mode, on_resp = std::move(on_resp),
-                         on_sse = std::move(on_sse), on_err = std::move(on_err)]() mutable {
+        // 所有对内部状态的访问都必须在 strand_ 上执行，
+        // 因为 io_context 可能有多个线程，而 HttpClientImpl 不是线程安全的。
+        net::post(strand_, [this, req = std::move(req), mode, on_resp = std::move(on_resp),
+                            on_sse = std::move(on_sse), on_err = std::move(on_err)]() mutable {
             Pending pending;
             pending.req = std::move(req);
             pending.mode = mode;
@@ -132,7 +157,7 @@ struct HttpClientImpl {
     }
 
     void cancel_all() {
-        net::post(ioc_, [this] {
+        net::post(strand_, [this] {
             for (auto& [easy, ctx] : active_) {
                 if (!ctx) {
                     continue;
@@ -152,7 +177,7 @@ struct HttpClientImpl {
     void async_post_sse(HttpRequest req, OnSseChunk on_chunk, OnError on_err);
 
     void pump_queue() {
-        while (in_flight_ < max_in_flight_ && !pending_.empty()) {
+        while (in_flight_ < max_in_flight() && !pending_.empty()) {
             auto pending = std::move(pending_.front());
             pending_.pop_front();
             start_one(std::move(pending));
@@ -160,7 +185,7 @@ struct HttpClientImpl {
     }
 
     void start_one(Pending pending) {
-        auto ctx = std::make_shared<RequestCtx>(ioc_);
+        auto ctx = std::make_shared<RequestCtx>(strand_);
         ctx->self_weak = ctx;
         ctx->req = std::move(pending.req);
         ctx->mode = pending.mode;
@@ -186,7 +211,10 @@ struct HttpClientImpl {
         curl_easy_setopt(ctx->easy, CURLOPT_URL, url.c_str());
         curl_easy_setopt(ctx->easy, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(ctx->easy, CURLOPT_TIMEOUT, static_cast<long>(ctx->req.timeout.count()));
-        curl_easy_setopt(ctx->easy, CURLOPT_CONNECTTIMEOUT, 10L);
+        // CONNECTTIMEOUT 调大到 30s：volcengine API TLS 握手较慢，且启用 HTTP/2 multiplex
+        // 时 curl 会优先复用现有连接，少量新连接慢一点不影响整体吞吐。
+        // 之前 10s 在 1000 并发 burst 下大量 connect 超时。
+        curl_easy_setopt(ctx->easy, CURLOPT_CONNECTTIMEOUT, 30L);
         curl_easy_setopt(ctx->easy, CURLOPT_NOSIGNAL, 1L);
         curl_easy_setopt(ctx->easy, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
         curl_easy_setopt(ctx->easy, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
@@ -306,7 +334,7 @@ struct HttpClientImpl {
             return;
         }
         if (timeout_ms == 0) {
-            net::post(ioc_, [this] { socket_action(CURL_SOCKET_TIMEOUT, 0); });
+            net::post(strand_, [this] { socket_action(CURL_SOCKET_TIMEOUT, 0); });
             return;
         }
         timer_.expires_after(std::chrono::milliseconds(timeout_ms));
@@ -330,7 +358,7 @@ struct HttpClientImpl {
 
         auto& sock = sockets_[s];
         if (!sock) {
-            sock = std::make_unique<CurlSocket>(ioc_, s);
+            sock = std::make_unique<CurlSocket>(strand_, s);
         }
         sock->action = what;
         if (!sock->watching) {
@@ -341,35 +369,39 @@ struct HttpClientImpl {
     void arm_socket(CurlSocket& socket) {
         socket.watching = true;
 
-        if (socket.action & CURL_POLL_IN) {
-            socket.stream.async_wait(
-                net::posix::stream_descriptor::wait_read,
-                [this, fd = socket.sock](const boost::system::error_code& ec) {
-                    if (!ec) {
-                        socket_action(fd, CURL_CSELECT_IN);
-                    }
-                    const auto it = sockets_.find(fd);
-                    if (it != sockets_.end() && it->second) {
-                        it->second->watching = false;
-                        arm_socket(*it->second);
-                    }
-                });
+        const bool want_in = (socket.action & CURL_POLL_IN) != 0;
+        const bool want_out = (socket.action & CURL_POLL_OUT) != 0;
+        if (!want_in && !want_out) {
+            return;
         }
 
-        if (socket.action & CURL_POLL_OUT) {
-            socket.stream.async_wait(
-                net::posix::stream_descriptor::wait_write,
-                [this, fd = socket.sock](const boost::system::error_code& ec) {
-                    if (!ec) {
-                        socket_action(fd, CURL_CSELECT_OUT);
-                    }
-                    const auto it = sockets_.find(fd);
-                    if (it != sockets_.end() && it->second) {
-                        it->second->watching = false;
-                        arm_socket(*it->second);
-                    }
-                });
-        }
+        // posix::stream_descriptor 同一时刻只允许一个未决 async_wait。
+        // 当 IN/OUT 都需要时，按 last_wait 交替选择方向，避免单方向饥饿。
+        const bool wait_read = want_in && (!want_out || socket.last_wait != CURL_POLL_IN);
+        const auto wait_kind = wait_read
+            ? net::posix::stream_descriptor::wait_read
+            : net::posix::stream_descriptor::wait_write;
+        const int select_flag = wait_read ? CURL_CSELECT_IN : CURL_CSELECT_OUT;
+
+        socket.last_wait = wait_read ? CURL_POLL_IN : CURL_POLL_OUT;
+        // 捕获 expected 指针用于身份校验：fd 可能被 curl 释放并在同一次
+        // socket_action 调用内被内核复用给新连接。若仅按 fd 查找 sockets_，
+        // 会命中新 socket 并对其再次 arm_socket，导致同一 stream_descriptor
+        // 上出现两个未决 async_wait（UB，引发内存损坏）。
+        // 通过比较 CurlSocket* 确保只 re-arm 当前的 socket 实例。
+        CurlSocket* expected = &socket;
+        socket.stream.async_wait(
+            wait_kind,
+            [this, fd = socket.sock, select_flag, expected](const boost::system::error_code& ec) {
+                if (!ec) {
+                    socket_action(fd, select_flag);
+                }
+                const auto it = sockets_.find(fd);
+                if (it != sockets_.end() && it->second.get() == expected) {
+                    it->second->watching = false;
+                    arm_socket(*it->second);
+                }
+            });
     }
 
     void socket_action(curl_socket_t sock, int ev_bitmask) {
@@ -406,9 +438,11 @@ struct HttpClientImpl {
             if (call_err) {
                 if (ctx->on_err) {
                     if (ctx->result != CURLE_OK) {
+                        // CURLcode 必须用 curl_category() 翻译，不能当 errno。
+                        // 见 http_client.hpp 中 CurlErrorCategory 的说明。
                         ctx->on_err(std::error_code(
                             static_cast<int>(ctx->result),
-                            std::generic_category()));
+                            curl_category()));
                     } else {
                         // SSE 等场景：传输成功但 HTTP 状态非 2xx（如 404 模型不存在）
                         ctx->on_err(std::error_code(
@@ -434,16 +468,23 @@ struct HttpClientImpl {
 
     HttpClient& self;
     net::io_context& ioc_;
+    // 所有对 HttpClientImpl 内部状态的访问都必须在 strand_ 上执行，
+    net::strand<net::io_context::executor_type> strand_;
+    // timer_ 用 strand_ 构造，async_wait 完成会在 strand_ 上执行。
     net::steady_timer timer_;
 
     CURLM* multi_ = nullptr;
-    std::size_t max_in_flight_ = 32;
+    HttpClientLimits limits_;
 
     std::unordered_map<curl_socket_t, std::unique_ptr<CurlSocket>> sockets_;
     std::unordered_map<CURL*, std::shared_ptr<RequestCtx>> active_;
 
     std::deque<Pending> pending_;
     std::size_t in_flight_ = 0;
+
+    [[nodiscard]] std::size_t max_in_flight() const noexcept {
+        return limits_.max_in_flight == 0 ? 32 : limits_.max_in_flight;
+    }
 };
 
 void HttpClientImpl::async_post(HttpRequest req, OnResponse on_resp, OnError on_err) {
@@ -454,11 +495,9 @@ void HttpClientImpl::async_post_sse(HttpRequest req, OnSseChunk on_chunk, OnErro
     post_request(std::move(req), Mode::SseStream, nullptr, std::move(on_chunk), std::move(on_err));
 }
 
-HttpClient::HttpClient(net::io_context& ioc, const std::size_t max_in_flight)
+HttpClient::HttpClient(net::io_context& ioc, HttpClientLimits limits)
     : ioc_(ioc)
-    , impl_(std::make_unique<HttpClientImpl>(*this, ioc_)) {
-    impl_->max_in_flight_ = max_in_flight == 0 ? 32 : max_in_flight;
-}
+    , impl_(std::make_unique<HttpClientImpl>(*this, ioc_, limits)) {}
 
 HttpClient::~HttpClient() = default;
 

@@ -1,7 +1,7 @@
 #include "engine/demo_ai2_engine.hpp"
 
 #include "beast/platform/core/log/logger.hpp"
-#include "beast/platform/engine/ai/ai_decision_declarative.hpp"
+#include "beast/mixin/ai/ai_decision_declarative.hpp"
 
 #include "demo_ai2.pb.h"
 
@@ -9,7 +9,7 @@
 
 namespace beast::demo::ai2 {
 
-beast::platform::engine::ai::AiReplyTarget DemoAi2Engine::ai_relay_target() const {
+beast::mixin::ai::AiReplyTarget DemoAi2Engine::ai_relay_target() const {
     return {};
 }
 
@@ -34,7 +34,7 @@ bool DemoAi2Engine::request_mixed_behavior_decision(const beast::platform::Actor
         return false;
     }
 
-    const beast::platform::ai::AiRequestId request_id = beast::platform::engine::ai::request_decision(
+    const beast::platform::ai::AiRequestId request_id = beast::mixin::ai::request_decision(
         ai_host_,
         make_mixed_behavior_decision(actor_id));
     if (request_id == 0) {
@@ -145,8 +145,9 @@ void DemoAi2Engine::on_engine_start(beast::platform::engine::context::EngineCont
     (void)request_mixed_behavior_decision(beast::platform::ActorId::from_player(kDemoPlayerId));
 }
 
-std::unique_ptr<DemoAi2Engine> make_demo_ai2_engine() {
-    return std::make_unique<DemoAi2Engine>();
+std::unique_ptr<DemoAi2Engine> make_demo_ai2_engine(
+    beast::mixin::ai::InstanceAiFacade* ai_facade) {
+    return std::make_unique<DemoAi2Engine>(ai_facade);
 }
 
 } // namespace beast::demo::ai2

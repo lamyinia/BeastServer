@@ -36,9 +36,9 @@ cd BeastServer-project/tools/biz_export
 
 | 输入 | 输出 |
 |------|------|
-| `bizconfig/static-xlsx/**/*.xlsx` | `beastserver/build/RelWithDebInfo/bizconfig/server/` — 服务端 `*_s.pb` |
-| | `beastserver/build/RelWithDebInfo/bizconfig/client/` — 客户端 `*_c.pb` |
-| | `beastserver/build/RelWithDebInfo/bizconfig/manifest.json` — 版本与校验 |
+| `bizconfig/static-xlsx/**/*.xlsx` | `beastserver/build/bizconfig/server/` — 服务端 `*_s.pb` |
+| | `beastserver/build/bizconfig/client/` — 客户端 `*_c.pb` |
+| | `beastserver/build/bizconfig/manifest.json` — 版本与校验 |
 | | `bizconfig/scheme/` — 策划表 schema（`.proto`） |
 
 Windows 使用 `tools/scripts/win/xlsx-export.ps1`。

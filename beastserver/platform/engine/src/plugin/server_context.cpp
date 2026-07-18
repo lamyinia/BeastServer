@@ -96,6 +96,13 @@ bool ServerContext::submit_instance_event(
     return submit_instance_event(instance_manager_, ch_ctx, msg, std::move(engine_route), std::move(payload));
 }
 
+ServiceRegistry* ServerContext::service_registry() const noexcept {
+    if (!host_) {
+        return nullptr;
+    }
+    return host_->service_registry();
+}
+
 bool ServerContext::submit_instance_event(
     engine::instance::InstanceManager* instance_manager,
     net::channel::ChannelHandlerContext& ch_ctx,

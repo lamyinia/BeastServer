@@ -1,4 +1,4 @@
-#include "beast/platform/engine/ai/instance_ai_facade.hpp"
+#include "beast/mixin/ai/instance_ai_facade.hpp"
 
 #include "beast/platform/ai/routes.hpp"
 #include "beast/platform/core/log/logger.hpp"
@@ -9,7 +9,7 @@
 
 #include <utility>
 
-namespace beast::platform::engine::ai {
+namespace beast::mixin::ai {
 namespace {
 
 void apply_chat_defaults(platform::ai::ChatRequest& req, const platform::ai::AiService* ai_service) {
@@ -553,4 +553,4 @@ bool InstanceAiFacade::submit_tool_result(
     return true;
 }
 
-} // namespace beast::platform::engine::ai
+} // namespace beast::mixin::ai

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "beast/platform/engine/ai/ai_delivery.hpp"
-#include "beast/platform/engine/ai/engine_ai_host.hpp"
-#include "beast/platform/engine/capability/ai_capability_mixin.hpp"
+#include "beast/mixin/ai/ai_delivery.hpp"
+#include "beast/mixin/ai/engine_ai_host.hpp"
+#include "beast/mixin/ai/capability/ai_capability_mixin.hpp"
 #include "beast/platform/engine/capability/engine_root.hpp"
 #include "register4ai/actions.hpp"
 #include "register4ai/decisions.hpp"
@@ -18,18 +18,21 @@ inline constexpr const char* kDemoPlayerId = "1";
 class DemoAi2Engine final
     : public beast::platform::engine::capability::EngineRoot<
           DemoAi2Engine,
-          beast::platform::engine::ai::AiCapabilityMixin> {
+          beast::mixin::ai::AiCapabilityMixin> {
 public:
-    [[nodiscard]] beast::platform::engine::ai::EngineAiHost& ai_host() noexcept { return ai_host_; }
-    [[nodiscard]] const beast::platform::engine::ai::EngineAiHost& ai_host() const noexcept {
+    explicit DemoAi2Engine(beast::mixin::ai::InstanceAiFacade* ai_facade = nullptr) {
+        ai_host_.set_ai_facade(ai_facade);
+    }
+    [[nodiscard]] beast::mixin::ai::EngineAiHost& ai_host() noexcept { return ai_host_; }
+    [[nodiscard]] const beast::mixin::ai::EngineAiHost& ai_host() const noexcept {
         return ai_host_;
     }
 
-    [[nodiscard]] beast::platform::engine::ai::AiReplyTarget ai_relay_target() const;
+    [[nodiscard]] beast::mixin::ai::AiReplyTarget ai_relay_target() const;
 
-    void register_ai_function_tools(beast::platform::engine::ai::AiToolRegistry& /*tools*/) {}
-    void register_ai_receipts(beast::platform::engine::ai::EngineAiHost& /*host*/) {}
-    void register_ai_decisions(beast::platform::engine::ai::EngineAiHost& host) {
+    void register_ai_function_tools(beast::mixin::ai::AiToolRegistry& /*tools*/) {}
+    void register_ai_receipts(beast::mixin::ai::EngineAiHost& /*host*/) {}
+    void register_ai_decisions(beast::mixin::ai::EngineAiHost& host) {
         register4ai::register_mixed_behavior_decision(*this, host);
     }
 
@@ -65,9 +68,10 @@ private:
         const std::string& payload_json,
         beast::platform::ai::AiRequestId request_id);
 
-    beast::platform::engine::ai::EngineAiHost ai_host_;
+    beast::mixin::ai::EngineAiHost ai_host_;
 };
 
-[[nodiscard]] std::unique_ptr<DemoAi2Engine> make_demo_ai2_engine();
+[[nodiscard]] std::unique_ptr<DemoAi2Engine> make_demo_ai2_engine(
+    beast::mixin::ai::InstanceAiFacade* ai_facade = nullptr);
 
 } // namespace beast::demo::ai2

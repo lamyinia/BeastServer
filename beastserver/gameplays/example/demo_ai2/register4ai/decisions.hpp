@@ -2,7 +2,7 @@
 
 #include "beast/platform/ai/model/chat.hpp"
 #include "beast/platform/core/types.hpp"
-#include "beast/platform/engine/ai/ai_legal_snapshot.hpp"
+#include "beast/mixin/ai/ai_legal_snapshot.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -76,7 +76,7 @@ public:
               {"loadout_a", "均衡型：主武器 + 轻甲 + 双技能"},
               {"loadout_b", "重火力：重武 + 重甲 + 无人机"},
           }))
-        , legal_(beast::platform::engine::ai::AiLegalSnapshot::from_actions({
+        , legal_(beast::mixin::ai::AiLegalSnapshot::from_actions({
               "ack",
               "pick_route",
               "squad_plan",
@@ -85,7 +85,7 @@ public:
 
     [[nodiscard]] beast::platform::ActorId actor_id() const noexcept { return actor_id_; }
     [[nodiscard]] const MissionBrief& brief() const noexcept { return brief_; }
-    [[nodiscard]] beast::platform::engine::ai::AiLegalSnapshot legal_snapshot() const { return legal_; }
+    [[nodiscard]] beast::mixin::ai::AiLegalSnapshot legal_snapshot() const { return legal_; }
     [[nodiscard]] const std::vector<IndexedOption>& routes() const noexcept { return routes_; }
     [[nodiscard]] const std::vector<IndexedOption>& plans() const noexcept { return plans_; }
     [[nodiscard]] const std::vector<IndexedOption>& loadouts() const noexcept { return loadouts_; }
@@ -142,7 +142,7 @@ private:
     std::vector<IndexedOption> routes_;
     std::vector<IndexedOption> plans_;
     std::vector<IndexedOption> loadouts_;
-    beast::platform::engine::ai::AiLegalSnapshot legal_;
+    beast::mixin::ai::AiLegalSnapshot legal_;
 };
 
 } // namespace beast::demo::ai2

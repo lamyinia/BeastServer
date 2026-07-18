@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package beast.demo.hotlua;
+
+// TCP c2s：玩家触发 Lua 函数调用（route: demo.hotlua.run）
+message RunRequest {
+  // 要调用的 Lua 全局函数名（如 "on_run"）
+  string function_name = 1;
+  // 字符串参数列表（demo 阶段只支持 string 入参）
+  repeated string args = 2;
+}
+
+// TCP s2c：Lua 函数调用结果（route: demo.hotlua.run_resp）
+message RunResponse {
+  bool ok = 1;
+  // Lua 函数返回值（字符串形式）；ok=false 时为错误信息
+  string result = 2;
+}
+
+// TCP s2c：热重载结果（route: demo.hotlua.reload_resp）
+message ReloadResponse {
+  bool ok = 1;
+  string message = 2;
+}

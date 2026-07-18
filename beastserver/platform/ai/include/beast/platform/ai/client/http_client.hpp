@@ -19,6 +19,23 @@ class HttpClientImpl;
 namespace http = boost::beast::http;
 namespace net = boost::asio;
 
+/// libcurl 错误码 category：把 CURLcode 翻译成 curl_easy_strerror 的真实消息。
+/// **必须**用这个 category 包装 CURLcode，不能用 std::generic_category——
+/// 因为 CURLcode 和 errno 数值会撞车（如 CURLcode 28 = CURLE_OPERATION_TIMEDOUT，
+/// 但 errno 28 = ENOSPC = "No space left on device"），导致错误消息完全错位。
+class CurlErrorCategory : public std::error_category {
+public:
+    const char* name() const noexcept override { return "curl"; }
+    std::string message(int ev) const override {
+        return curl_easy_strerror(static_cast<CURLcode>(ev));
+    }
+};
+
+inline const std::error_category& curl_category() noexcept {
+    static CurlErrorCategory cat;
+    return cat;
+}
+
 struct HttpRequest {
     std::string host;
     std::string port;
@@ -40,9 +57,16 @@ using OnResponse = std::function<void(HttpResponse&&)>;
 using OnError = std::function<void(std::error_code)>;
 using OnSseChunk = std::function<void(std::string_view)>;
 
+struct HttpClientLimits {
+    std::size_t max_in_flight = 32;
+    // libcurl multi 连接数限制。0 表示用 libcurl 默认值（不显式设置 CURLMOPT_*）。
+    long max_total_connections = 0;
+    long max_host_connections = 0;
+};
+
 class HttpClient {
 public:
-    explicit HttpClient(net::io_context& ioc, std::size_t max_in_flight = 32);
+    explicit HttpClient(net::io_context& ioc, HttpClientLimits limits = {});
     ~HttpClient();
 
     HttpClient(const HttpClient&) = delete;

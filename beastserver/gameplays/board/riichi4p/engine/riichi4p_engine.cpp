@@ -5,7 +5,7 @@
 
 namespace beast::board::riichi4p {
 
-beast::platform::engine::ai::AiReplyTarget Riichi4pEngine::ai_relay_target() const {
+beast::mixin::ai::AiReplyTarget Riichi4pEngine::ai_relay_target() const {
     return {};
 }
 
@@ -107,7 +107,7 @@ void Riichi4pEngine::run_on_start_turn_action_demo() {
             }));
 
     const beast::platform::ai::AiRequestId request_id =
-        beast::platform::engine::ai::request_decision(ai_host_, decision);
+        beast::mixin::ai::request_decision(ai_host_, decision);
     if (request_id == 0) {
         BEAST_LOG_WARN("riichi4p on_start demo: request_decision failed (AI unavailable?)");
     } else {

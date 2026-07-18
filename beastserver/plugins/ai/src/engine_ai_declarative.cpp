@@ -1,8 +1,8 @@
-#include "beast/platform/engine/ai/engine_ai_events.hpp"
+#include "beast/mixin/ai/engine_ai_events.hpp"
 
-#include "beast/platform/engine/ai/engine_ai_host.hpp"
+#include "beast/mixin/ai/engine_ai_host.hpp"
 
-namespace beast::platform::engine::ai {
+namespace beast::mixin::ai {
 
 void EngineAiEvents::install_event_registration(AiRegisteredEventSpec spec) {
     const RouteId engine_route = spec.engine_route;
@@ -23,4 +23,4 @@ void EngineAiEvents::install_event_registration(AiRegisteredEventSpec spec) {
     relay_hooks_installed_ = true;
 }
 
-} // namespace beast::platform::engine::ai
+} // namespace beast::mixin::ai

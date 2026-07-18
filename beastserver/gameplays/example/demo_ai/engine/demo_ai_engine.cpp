@@ -1,18 +1,18 @@
 #include "engine/demo_ai_engine.hpp"
 
 #include "beast/platform/core/log/logger.hpp"
-#include "beast/platform/engine/ai/ai_receipt.hpp"
+#include "beast/mixin/ai/ai_receipt.hpp"
 
 #include <algorithm>
 
 namespace beast::demo::ai {
 
-beast::platform::engine::ai::AiReplyTarget DemoAiEngine::ai_relay_target() const {
+beast::mixin::ai::AiReplyTarget DemoAiEngine::ai_relay_target() const {
     return {};
 }
 
 void DemoAiEngine::register_ai_function_tools(
-    beast::platform::engine::ai::AiToolRegistry& /*tools*/) {}
+    beast::mixin::ai::AiToolRegistry& /*tools*/) {}
 
 void DemoAiEngine::random_walk_target() {
     static constexpr int kDirections[4][2] = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}};
@@ -35,43 +35,49 @@ bool DemoAiEngine::target_in_attack_square(const int attack_x, const int attack_
         && target_.y < attack_y + TargetState::kAttackSquareSize;
 }
 
-void DemoAiEngine::try_submit_hunt_request() {
-    if (!test_active_ || awaiting_receipt_ || target_.hp <= 0
-        || ai_requests_sent_ >= kMaxAiRequests) {
+void DemoAiEngine::submit_hunt_burst() {
+    if (!test_active_ || target_.hp <= 0) {
         return;
     }
 
-    HuntEvent::Request request{
-        .target_x = target_.x,
-        .target_y = target_.y,
-        .target_hp = target_.hp,
-        .map_size = TargetState::kMapSize,
-        .attack_square_size = TargetState::kAttackSquareSize,
-        .requests_remaining = kMaxAiRequests - ai_requests_sent_,
-    };
+    // 一次性 burst kBurstCount 个并发 AI request，用于压测 HttpClient 并发承载。
+    // 所有 request 共享同一 target 位置（burst 模式不移动 target）。
+    int submitted = 0;
+    for (int i = 0; i < kBurstCount; ++i) {
+        HuntEvent::Request request{
+            .target_x = target_.x,
+            .target_y = target_.y,
+            .target_hp = target_.hp,
+            .map_size = TargetState::kMapSize,
+            .attack_square_size = TargetState::kAttackSquareSize,
+            .requests_remaining = kBurstCount - i,
+        };
 
-    const beast::platform::ai::AiRequestId request_id = 
-        beast::platform::engine::ai::request_receipt<HuntEvent>(ai_host(), request);
-        
-    if (request_id == 0) {
-        BEAST_LOG_WARN("demo_ai hunt request_receipt failed pos=({},{})", target_.x, target_.y);
-        return;
+        const beast::platform::ai::AiRequestId request_id =
+            beast::mixin::ai::request_receipt<HuntEvent>(ai_host(), request);
+
+        if (request_id == 0) {
+            BEAST_LOG_WARN(
+                "demo_ai burst submit failed at index={} pos=({},{})",
+                i,
+                target_.x,
+                target_.y);
+            break;
+        }
+        ++ai_requests_sent_;
+        ++submitted;
     }
 
-    awaiting_receipt_ = true;
-    ++ai_requests_sent_;
     BEAST_LOG_INFO(
-        "demo_ai hunt request={} round={}/{} target=({},{}) hp={}",
-        request_id,
-        ai_requests_sent_,
-        kMaxAiRequests,
+        "demo_ai hunt burst submitted={} target=({},{}) hp={}",
+        submitted,
         target_.x,
         target_.y,
         target_.hp);
 }
 
 void DemoAiEngine::on_hunt_receipt(const HuntReceiptResult& result) {
-    awaiting_receipt_ = false;
+    ++receipts_received_;
 
     if (!result.ok) {
         BEAST_LOG_WARN(
@@ -83,33 +89,27 @@ void DemoAiEngine::on_hunt_receipt(const HuntReceiptResult& result) {
 
     const bool hit = target_in_attack_square(result.attack_x, result.attack_y);
     if (hit) {
-        --target_.hp;
+        ++hits_;
+        // burst 模式下 hp 只用于统计，不提前取消剩余 request（让它们自然完成）。
     }
 
-    BEAST_LOG_INFO(
-        "demo_ai hunt receipt request={} attack=({},{}) target=({},{}) hit={} hp={}",
-        result.request_id,
-        result.attack_x,
-        result.attack_y,
-        target_.x,
-        target_.y,
-        hit,
-        target_.hp);
+    if (receipts_received_ % 100 == 0 || receipts_received_ == ai_requests_sent_) {
+        BEAST_LOG_INFO(
+            "demo_ai hunt progress receipt={}/{} hits={} target=({},{})",
+            receipts_received_,
+            ai_requests_sent_,
+            hits_,
+            target_.x,
+            target_.y);
+    }
 
-    if (target_.hp <= 0) {
+    if (receipts_received_ >= ai_requests_sent_) {
         test_active_ = false;
         BEAST_LOG_INFO(
-            "demo_ai hunt success in {} requests",
-            ai_requests_sent_);
-        return;
-    }
-
-    if (ai_requests_sent_ >= kMaxAiRequests) {
-        test_active_ = false;
-        BEAST_LOG_WARN(
-            "demo_ai hunt failed: used all {} requests, target hp={}",
-            kMaxAiRequests,
-            target_.hp);
+            "demo_ai hunt burst done: submitted={} received={} hits={}",
+            ai_requests_sent_,
+            receipts_received_,
+            hits_);
     }
 }
 
@@ -125,14 +125,18 @@ void DemoAiEngine::on_engine_start(beast::platform::engine::context::EngineConte
     target_.y = pos_dist(rng_);
     target_.hp = TargetState::kInitialHp;
     ai_requests_sent_ = 0;
-    awaiting_receipt_ = false;
+    receipts_received_ = 0;
+    hits_ = 0;
     test_active_ = true;
 
     BEAST_LOG_INFO(
-        "demo_ai hunt test start target=({},{}) hp={}",
+        "demo_ai hunt burst test start target=({},{}) hp={} burst_count={}",
         target_.x,
         target_.y,
-        target_.hp);
+        target_.hp,
+        kBurstCount);
+
+    submit_hunt_burst();
 }
 
 void DemoAiEngine::on_engine_tick(
@@ -142,19 +146,20 @@ void DemoAiEngine::on_engine_tick(
         return;
     }
 
-    random_walk_target();
-    BEAST_LOG_INFO(
-        "demo_ai tick={} target moved to ({},{}) hp={}",
-        tick,
-        target_.x,
-        target_.y,
-        target_.hp);
-
-    try_submit_hunt_request();
+    // burst 模式：所有 request 已在 on_engine_start 发出，tick 只用于打进度日志。
+    if (tick % 5 == 0) {
+        BEAST_LOG_INFO(
+            "demo_ai tick={} burst progress sent={} received={} hits={}",
+            tick,
+            ai_requests_sent_,
+            receipts_received_,
+            hits_);
+    }
 }
 
-std::unique_ptr<DemoAiEngine> make_demo_ai_engine() {
-    return std::make_unique<DemoAiEngine>();
+std::unique_ptr<DemoAiEngine> make_demo_ai_engine(
+    beast::mixin::ai::InstanceAiFacade* ai_facade) {
+    return std::make_unique<DemoAiEngine>(ai_facade);
 }
 
 } // namespace beast::demo::ai

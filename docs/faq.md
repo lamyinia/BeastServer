@@ -9,7 +9,7 @@
 **处理**：
 
 ```bash
-cd beastserver/build/RelWithDebInfo
+cd beastserver/build
 cmake --build . --target beastserver -j$(nproc)
 ./beastserver
 ```
@@ -30,7 +30,7 @@ cmake --build . --target beast_plugin_demo_event beast_plugin_demo_tick -j$(npro
 
 ```bash
 # 开发时 .so 在 build 目录，用环境变量覆盖
-BEAST_PLUGINS_DIR=build/RelWithDebInfo/plugins ./build/RelWithDebInfo/beastserver
+BEAST_PLUGINS_DIR=build/plugins ./build/beastserver
 ```
 
 或检查 `config/server.json` 中 `plugins.dir` 是否指向正确目录。

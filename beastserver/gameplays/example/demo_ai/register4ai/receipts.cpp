@@ -5,7 +5,7 @@
 namespace beast::demo::ai {
 
 void DemoAiEngine::register_ai_receipts(
-    beast::platform::engine::ai::EngineAiHost& host) {
+    beast::mixin::ai::EngineAiHost& host) {
     register4ai::register_hunt_receipt(*this, host);
 }
 

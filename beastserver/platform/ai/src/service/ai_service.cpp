@@ -10,14 +10,19 @@
 namespace beast::platform::ai {
 namespace {
 
-[[nodiscard]] std::size_t resolve_max_concurrent(const AiConfig& config) {
+[[nodiscard]] client::HttpClientLimits make_http_limits(const AiConfig& config) {
+    client::HttpClientLimits limits;
+    // max_in_flight 取所有 provider 的 max_concurrent 最大值，最小 32。
     std::size_t max_concurrent = 32;
     for (const auto& [_, provider] : config.providers) {
         max_concurrent = std::max(
             max_concurrent,
             static_cast<std::size_t>(provider.max_concurrent));
     }
-    return max_concurrent;
+    limits.max_in_flight = max_concurrent;
+    limits.max_total_connections = config.max_total_connections;
+    limits.max_host_connections = config.max_host_connections;
+    return limits;
 }
 
 } // namespace
@@ -29,14 +34,14 @@ AiService::AiService(AiConfig config)
     , lifetime_(std::make_shared<int>(0))
     , ioc_(*owned_ioc_)
     , config_(std::move(config))
-    , http_client_(ioc_, resolve_max_concurrent(config_))
+    , http_client_(ioc_, make_http_limits(config_))
 {}
 
 AiService::AiService(boost::asio::io_context& ioc, AiConfig config)
     : lifetime_(std::make_shared<int>(0))
     , ioc_(ioc)
     , config_(std::move(config))
-    , http_client_(ioc_, resolve_max_concurrent(config_))
+    , http_client_(ioc_, make_http_limits(config_))
 {}
 
 AiService::~AiService() {

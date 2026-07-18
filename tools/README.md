@@ -24,16 +24,16 @@ cd BeastServer-project/tools/biz_export
 
 | 路径 | 用途 |
 |------|------|
-| `beastserver/build/RelWithDebInfo/bizconfig/server/` | 服务端 `*_s.pb` |
-| `beastserver/build/RelWithDebInfo/bizconfig/client/` | 客户端 `*_c.pb` |
-| `beastserver/build/RelWithDebInfo/bizconfig/manifest.json` | 版本与校验 |
+| `beastserver/build/bizconfig/server/` | 服务端 `*_s.pb` |
+| `beastserver/build/bizconfig/client/` | 客户端 `*_c.pb` |
+| `beastserver/build/bizconfig/manifest.json` | 版本与校验 |
 | `bizconfig/scheme/` | 策划表 schema（工具生成 `.proto`） |
 
 ## 跑服验证
 
 ```bash
 cd beastserver
-./build/RelWithDebInfo/beastserver config/server.json
+./build/beastserver config/server.json
 ```
 
 `server.json` 里需 `bizconfig.enabled: true`（仓库默认已开）。
@@ -49,8 +49,6 @@ cd beastserver
 **脚本报 `biz_export not built`** → 先执行上面「第一次」的 `./build.sh`。
 
 **改了 xlsx 但服里还是旧数据** → 再跑一遍 `cpp-xlsx-export.sh`，然后重启 beastserver。
-
-**Debug 构建** → `BUILD_TYPE=Debug ./tools/scripts/linux/cpp-xlsx-export.sh`
 
 **Windows** → `.\tools\scripts\win\xlsx-export.ps1`
 

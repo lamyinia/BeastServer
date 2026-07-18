@@ -1,17 +1,17 @@
-#include "beast/platform/engine/ai/engine_ai_host.hpp"
+#include "beast/mixin/ai/engine_ai_host.hpp"
 
 #include "beast/platform/ai/routes.hpp"
 #include "beast/platform/core/log/logger.hpp"
-#include "beast/platform/engine/ai/ai_event_dispatch.hpp"
-#include "beast/platform/engine/ai/ai_tool_dispatch.hpp"
-#include "beast/platform/engine/ai/instance_ai_facade.hpp"
+#include "beast/mixin/ai/ai_event_dispatch.hpp"
+#include "beast/mixin/ai/ai_tool_dispatch.hpp"
+#include "beast/mixin/ai/instance_ai_facade.hpp"
 #include "beast/platform/engine/context/engine_context.hpp"
 
 #include "ai_event.pb.h"
 
 #include <utility>
 
-namespace beast::platform::engine::ai {
+namespace beast::mixin::ai {
 namespace {
 
 void log_tool_loop_failed(const platform::ai::AiToolLoopFailedEvent& failed) {
@@ -287,7 +287,7 @@ bool EngineAiHost::dispatch_platform_ai(const instance::InstanceEvent& event) {
             .on_tool_invoke =
                 [this](const platform::ai::AiToolInvokeEvent& invoke,
                        const instance::InstanceEvent& /*raw*/) {
-                    auto* ai = ctx_->ai();
+                    auto* ai = ai_facade_;
                     if (!ai) {
                         return;
                     }
@@ -333,7 +333,7 @@ platform::ai::AiRequestId EngineAiHost::request_ai(
     const bool bind_reply_actor = reply_to.has_value();
     platform::ai::AiRequestId request_id = 0;
     if (spec.use_tools) {
-        auto* ai = ctx_->ai();
+        auto* ai = ai_facade_;
         if (!ai || !ai->available()) {
             BEAST_LOG_WARN("EngineAiHost request_ai: AI unavailable");
             return 0;
@@ -377,7 +377,7 @@ platform::ai::AiRequestId EngineAiHost::ask_chat(
     const std::uint64_t user_tag,
     AiReplyTarget target,
     const platform::ai::Provider provider) {
-    auto* ai = ctx_->ai();
+    auto* ai = ai_facade_;
     if (!ai || !ai->available()) {
         BEAST_LOG_WARN("EngineAiHost ask_chat: AI unavailable");
         return 0;
@@ -401,7 +401,7 @@ platform::ai::AiRequestId EngineAiHost::ask_tools(
     const std::optional<ActorId>& reply_to,
     const std::uint64_t user_tag,
     AiReplyTarget target) {
-    auto* ai = ctx_->ai();
+    auto* ai = ai_facade_;
     if (!ai || !ai->available()) {
         BEAST_LOG_WARN("EngineAiHost ask_tools: AI unavailable");
         return 0;
@@ -417,4 +417,4 @@ platform::ai::AiRequestId EngineAiHost::ask_tools(
     return ai->chat_with_tools(*ctx_, std::move(params));
 }
 
-} // namespace beast::platform::engine::ai
+} // namespace beast::mixin::ai

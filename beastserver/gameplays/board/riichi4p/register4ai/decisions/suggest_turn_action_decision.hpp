@@ -2,7 +2,7 @@
 
 #include "beast/platform/ai/model/chat.hpp"
 #include "beast/platform/core/types.hpp"
-#include "beast/platform/engine/ai/ai_legal_snapshot.hpp"
+#include "beast/mixin/ai/ai_legal_snapshot.hpp"
 #include "engine/table_state.hpp"
 
 #include <nlohmann/json.hpp>
@@ -52,7 +52,7 @@ public:
         , seat_(seat)
         , view_(std::move(view))
         , legal_actions_(index_turn_actions(view_.legal_actions))
-        , legal_(beast::platform::engine::ai::AiLegalSnapshot::from_vector(collect_action_kinds())) {}
+        , legal_(beast::mixin::ai::AiLegalSnapshot::from_vector(collect_action_kinds())) {}
 
     [[nodiscard]] beast::platform::ActorId actor_id() const noexcept { return actor_id_; }
     [[nodiscard]] int seat() const noexcept { return seat_; }
@@ -60,7 +60,7 @@ public:
     [[nodiscard]] const std::vector<IndexedTurnAction>& legal_actions() const noexcept {
         return legal_actions_;
     }
-    [[nodiscard]] beast::platform::engine::ai::AiLegalSnapshot legal_snapshot() const {
+    [[nodiscard]] beast::mixin::ai::AiLegalSnapshot legal_snapshot() const {
         return legal_;
     }
 
@@ -134,7 +134,7 @@ private:
     int seat_;
     RiichiTableView view_;
     std::vector<IndexedTurnAction> legal_actions_;
-    beast::platform::engine::ai::AiLegalSnapshot legal_;
+    beast::mixin::ai::AiLegalSnapshot legal_;
 };
 
 } // namespace beast::board::riichi4p

@@ -2,7 +2,6 @@
 
 #include "beast/platform/core/config/server_config.hpp"
 #include "beast/platform/bizutil/config/store.hpp"
-#include "beast/platform/engine/ai/instance_ai_facade.hpp"
 #include "beast/platform/engine/dispatch/instance_event_bridge.hpp"
 #include "beast/platform/engine/dispatch/player_instance_registry.hpp"
 #include "beast/platform/engine/instance/instance_manager.hpp"
@@ -99,7 +98,7 @@ private:
     rpc::GrpcServer grpc_server_;
     std::unique_ptr<discovery::EtcdMonitor> etcd_monitor_;
     /// 平台服务注册表：在 instance_manager_ 之前声明，使其在 instance_manager_ 之后析构，
-    /// 保证 InstanceAiFacade（由 registry 持有 shared_ptr）在 InstanceManager 整个生命周期内有效。
+    /// 保证平台插件注册的共享服务（由 registry 持有 shared_ptr）在 InstanceManager 整个生命周期内有效。
     plugin::ServiceRegistry service_registry_;
     engine::instance::InstanceManager instance_manager_;
     engine::timer::TimerService timer_service_;

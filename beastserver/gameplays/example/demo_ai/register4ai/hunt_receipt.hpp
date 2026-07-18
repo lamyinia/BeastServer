@@ -2,7 +2,7 @@
 
 #include "engine/demo_ai_engine.hpp"
 
-#include "beast/platform/engine/ai/ai_receipt.hpp"
+#include "beast/mixin/ai/ai_receipt.hpp"
 
 namespace beast::demo::ai::register4ai {
 
@@ -10,8 +10,8 @@ template <typename Engine>
     requires requires(Engine& engine, const HuntReceiptResult& result) {
         { engine.on_hunt_receipt(result) } -> std::same_as<void>;
     }
-inline void register_hunt_receipt(Engine& engine, beast::platform::engine::ai::EngineAiHost& host) {
-    beast::platform::engine::ai::register_json_receipt<HuntEvent, HuntReceiptResult, Engine>(
+inline void register_hunt_receipt(Engine& engine, beast::mixin::ai::EngineAiHost& host) {
+    beast::mixin::ai::register_json_receipt<HuntEvent, HuntReceiptResult, Engine>(
         host,
         engine,
         "demo_ai.hunt")

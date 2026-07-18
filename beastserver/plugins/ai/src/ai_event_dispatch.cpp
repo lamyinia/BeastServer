@@ -1,8 +1,8 @@
-#include "beast/platform/engine/ai/ai_event_dispatch.hpp"
+#include "beast/mixin/ai/ai_event_dispatch.hpp"
 
 #include "beast/platform/ai/routes.hpp"
 
-namespace beast::platform::engine::ai {
+namespace beast::mixin::ai {
 
 bool dispatch_ai_event(const instance::InstanceEvent& event, const AiEventHandlers& handlers) {
     if (event.route == platform::ai::kRouteChatDone) {
@@ -36,4 +36,4 @@ bool dispatch_ai_event(const instance::InstanceEvent& event, const AiEventHandle
     return false;
 }
 
-} // namespace beast::platform::engine::ai
+} // namespace beast::mixin::ai

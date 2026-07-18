@@ -1,6 +1,6 @@
 #include "beast/platform/ai/model/chat.hpp"
 #include "beast/platform/ai/routes.hpp"
-#include "beast/platform/engine/ai/instance_ai_facade.hpp"
+#include "beast/mixin/ai/instance_ai_facade.hpp"
 #include "beast/platform/engine/dispatch/instance_dispatch_binding.hpp"
 #include "beast/platform/engine/dispatch/instance_session_binding.hpp"
 #include "beast/platform/engine/instance/i_engine.hpp"
@@ -167,8 +167,7 @@ TEST(InstanceDispatchIntegrationTest, CreateRoomBindsOnlineSessionForSubmit) {
 TEST(InstanceDispatchIntegrationTest, AiFacadeDeliversViaEngineContextSubmitFn) {
     net::server::TcpServer server({});
     engine::instance::InstanceManager manager(test_runtime(), &server.outbound_hub());
-    engine::ai::InstanceAiFacade ai_facade(nullptr);
-    manager.set_instance_ai_facade(&ai_facade);
+    beast::mixin::ai::InstanceAiFacade ai_facade(nullptr);
     manager.start();
 
     CountingEngine* live_engine = nullptr;

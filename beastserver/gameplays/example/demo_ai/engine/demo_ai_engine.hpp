@@ -1,8 +1,8 @@
 #pragma once
 
-#include "beast/platform/engine/ai/ai_json_decision.hpp"
-#include "beast/platform/engine/ai/engine_ai_host.hpp"
-#include "beast/platform/engine/capability/ai_capability_mixin.hpp"
+#include "beast/mixin/ai/ai_json_decision.hpp"
+#include "beast/mixin/ai/engine_ai_host.hpp"
+#include "beast/mixin/ai/capability/ai_capability_mixin.hpp"
 #include "beast/platform/engine/capability/engine_root.hpp"
 #include "beast/platform/engine/instance/instance_event.hpp"
 
@@ -82,13 +82,16 @@ struct HuntReceiptResult {
     }
 
     [[nodiscard]] static std::vector<std::string> output_rules() {
-        return {"attack_x 和 attack_y 必须让攻击正方形完全落在地图内"};
+        return {
+            "只输出一个 JSON 对象，禁止任何解释、推理过程、前后缀文字或 markdown 代码块标记",
+            "attack_x 和 attack_y 必须让攻击正方形完全落在地图内",
+        };
     }
 
-    [[nodiscard]] static beast::platform::engine::ai::JsonParseResult<HuntReceiptResult> parse_json(
+    [[nodiscard]] static beast::mixin::ai::JsonParseResult<HuntReceiptResult> parse_json(
         const HuntEvent::Request& request,
         const nlohmann::json& object) {
-        using Result = beast::platform::engine::ai::JsonParseResult<HuntReceiptResult>;
+        using Result = beast::mixin::ai::JsonParseResult<HuntReceiptResult>;
 
         HuntLlmOutput llm_output;
         try {
@@ -127,21 +130,29 @@ struct HuntReceiptResult {
 };
 
 class DemoAiEngine final
-    : public beast::platform::engine::capability::EngineRoot<DemoAiEngine, beast::platform::engine::ai::AiCapabilityMixin> {
+    : public beast::platform::engine::capability::EngineRoot<DemoAiEngine, beast::mixin::ai::AiCapabilityMixin> {
 public:
+    explicit DemoAiEngine(beast::mixin::ai::InstanceAiFacade* ai_facade = nullptr) {
+        ai_host_.set_ai_facade(ai_facade);
+    }
+
+    // burst 模式：on_engine_start 一次性发出这么多并发 AI request，
+    // 用于验证 HttpClient / AiService 的并发承载能力。
+    // 旧行为是循环 hunt 10 轮（每 tick 1 个、等 receipt 再发下一个）。
     static constexpr int kMaxAiRequests = 10;
+    static constexpr int kBurstCount = 1000;
 
-    [[nodiscard]] beast::platform::engine::ai::EngineAiHost& ai_host() noexcept {
+    [[nodiscard]] beast::mixin::ai::EngineAiHost& ai_host() noexcept {
         return ai_host_;
     }
-    [[nodiscard]] const beast::platform::engine::ai::EngineAiHost& ai_host() const noexcept {
+    [[nodiscard]] const beast::mixin::ai::EngineAiHost& ai_host() const noexcept {
         return ai_host_;
     }
 
-    [[nodiscard]] beast::platform::engine::ai::AiReplyTarget ai_relay_target() const;
+    [[nodiscard]] beast::mixin::ai::AiReplyTarget ai_relay_target() const;
 
-    void register_ai_function_tools(beast::platform::engine::ai::AiToolRegistry& tools);
-    void register_ai_receipts(beast::platform::engine::ai::EngineAiHost& host);
+    void register_ai_function_tools(beast::mixin::ai::AiToolRegistry& tools);
+    void register_ai_receipts(beast::mixin::ai::EngineAiHost& host);
 
     void on_hunt_receipt(const HuntReceiptResult& result);
 
@@ -151,17 +162,19 @@ public:
 
 private:
     void random_walk_target();
-    void try_submit_hunt_request();
+    void submit_hunt_burst();
     [[nodiscard]] bool target_in_attack_square(int attack_x, int attack_y) const noexcept;
 
-    beast::platform::engine::ai::EngineAiHost ai_host_;
+    beast::mixin::ai::EngineAiHost ai_host_;
     TargetState target_;
     std::mt19937 rng_{std::random_device{}()};
     int ai_requests_sent_{0};
+    int receipts_received_{0};
+    int hits_{0};
     bool test_active_{false};
-    bool awaiting_receipt_{false};
 };
 
-[[nodiscard]] std::unique_ptr<DemoAiEngine> make_demo_ai_engine();
+[[nodiscard]] std::unique_ptr<DemoAiEngine> make_demo_ai_engine(
+    beast::mixin::ai::InstanceAiFacade* ai_facade = nullptr);
 
 } // namespace beast::demo::ai

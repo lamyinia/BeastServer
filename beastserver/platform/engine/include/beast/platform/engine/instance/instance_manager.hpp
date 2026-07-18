@@ -23,10 +23,6 @@ namespace beast::platform::engine::timer {
 class TimerService;
 }
 
-namespace beast::platform::engine::ai {
-class InstanceAiFacade;
-}
-
 namespace beast::platform::engine::instance {
 
 class InstanceManager {
@@ -42,7 +38,6 @@ public:
     void set_biz_config_store(const bizutil::config::BizConfigStore* store) noexcept {
         biz_config_store_ = store;
     }
-    void set_instance_ai_facade(ai::InstanceAiFacade* facade) noexcept { instance_ai_ = facade; }
 
     void start();
     void stop();
@@ -79,7 +74,6 @@ private:
     carrier::LoopCarrierPool loop_pool_;
     timer::TimerService* timer_service_{nullptr};
     const bizutil::config::BizConfigStore* biz_config_store_{nullptr};
-    ai::InstanceAiFacade* instance_ai_{nullptr};
     InstanceEndedFn instance_ended_fn_;
 
     mutable std::mutex instances_mutex_;

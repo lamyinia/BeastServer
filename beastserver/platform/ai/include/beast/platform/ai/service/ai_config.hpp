@@ -43,6 +43,9 @@ struct AiConfig {
     std::string default_music_model = "doubao-music";
     std::string default_embedding_model = "doubao-embedding";
     TosConfig tos;
+    // HttpClient (libcurl multi) 连接数限制。0 表示用 libcurl 默认值。
+    int max_total_connections = 0;
+    int max_host_connections = 0;
 
     [[nodiscard]] const ProviderConfig& get(Provider provider) const;
 

@@ -1,8 +1,8 @@
-#include "beast/platform/engine/ai/ai_tool_dispatch.hpp"
+#include "beast/mixin/ai/ai_tool_dispatch.hpp"
 
 #include "beast/platform/ai/routes.hpp"
 
-namespace beast::platform::engine::ai {
+namespace beast::mixin::ai {
 
 bool dispatch_tool_event(const instance::InstanceEvent& event, const AiToolEventHandlers& handlers) {
     if (event.route == platform::ai::kRouteToolInvoke) {
@@ -50,4 +50,4 @@ bool dispatch_tool_event(const instance::InstanceEvent& event, const AiToolEvent
     return false;
 }
 
-} // namespace beast::platform::engine::ai
+} // namespace beast::mixin::ai

@@ -74,19 +74,19 @@ gameplays/your_plugin/
 class YourEngine final
     : public beast::platform::engine::capability::EngineRoot<
           YourEngine,
-          beast::platform::engine::ai::AiCapabilityMixin> {
+          beast::mixin::ai::AiCapabilityMixin> {
 public:
-    beast::platform::engine::ai::EngineAiHost& ai_host() noexcept { return ai_host_; }
+    beast::mixin::ai::EngineAiHost& ai_host() noexcept { return ai_host_; }
 
     // 以下三个在 on_start 时由平台自动调用，插件实现即可
-    void register_ai_function_tools(beast::platform::engine::ai::AiToolRegistry& tools);
-    void register_ai_receipts(beast::platform::engine::ai::EngineAiHost& host);
-    void register_ai_decisions(beast::platform::engine::ai::EngineAiHost& host);
+    void register_ai_function_tools(beast::mixin::ai::AiToolRegistry& tools);
+    void register_ai_receipts(beast::mixin::ai::EngineAiHost& host);
+    void register_ai_decisions(beast::mixin::ai::EngineAiHost& host);
 
-    beast::platform::engine::ai::AiReplyTarget ai_relay_target() const;  // 纯 engine demo 可返回 {}
+    beast::mixin::ai::AiReplyTarget ai_relay_target() const;  // 纯 engine demo 可返回 {}
 
 private:
-    beast::platform::engine::ai::EngineAiHost ai_host_;
+    beast::mixin::ai::EngineAiHost ai_host_;
 };
 ```
 

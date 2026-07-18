@@ -1,6 +1,6 @@
 #pragma once
 
-#include "beast/platform/engine/ai/ai_json_decision.hpp"
+#include "beast/mixin/ai/ai_json_decision.hpp"
 #include "register4ai/actions.hpp"
 #include "register4ai/decisions.hpp"
 
@@ -28,15 +28,15 @@ template <typename Engine>
     }
 inline void register_mixed_behavior_decision(
     Engine& engine,
-    beast::platform::engine::ai::EngineAiHost& host) {
-    (void)beast::platform::engine::ai::register_json_decision<MixedBehaviorDecision, Engine>(
+    beast::mixin::ai::EngineAiHost& host) {
+    (void)beast::mixin::ai::register_json_decision<MixedBehaviorDecision, Engine>(
         host,
         engine,
         "demo_ai2.mixed_behavior",
-        beast::platform::engine::ai::decision_action<AckAction>(&Engine::apply_ack),
-        beast::platform::engine::ai::decision_action<PickRouteAction>(&Engine::apply_pick_route),
-        beast::platform::engine::ai::decision_action<SquadPlanAction>(&Engine::apply_squad_plan),
-        beast::platform::engine::ai::decision_action<LoadoutAction>(&Engine::apply_loadout))
+        beast::mixin::ai::decision_action<AckAction>(&Engine::apply_ack),
+        beast::mixin::ai::decision_action<PickRouteAction>(&Engine::apply_pick_route),
+        beast::mixin::ai::decision_action<SquadPlanAction>(&Engine::apply_squad_plan),
+        beast::mixin::ai::decision_action<LoadoutAction>(&Engine::apply_loadout))
         .without_tools()
         .output_rule("每次请求请随机选择一种 action");
 }

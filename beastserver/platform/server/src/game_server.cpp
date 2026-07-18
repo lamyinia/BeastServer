@@ -45,8 +45,8 @@ namespace fs = std::filesystem;
     const fs::path& repo_root,
     const fs::path& configured_relative) {
     const fs::path candidates[] = {
-        repo_root / "build/RelWithDebInfo/plugins",
         repo_root / "build/plugins",
+        repo_root / "build/RelWithDebInfo/plugins",
         fs::current_path() / "plugins",
         repo_root / configured_relative,
     };
@@ -178,21 +178,6 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
     plugin_host_.set_server_config(&config_);
     if (!plugin_host_.load_platform_plugins()) {
         BEAST_LOG_ERROR("GameServer platform plugin load failed");
-    }
-
-    // 查询 AI 平台插件注册的 InstanceAiFacade，注入 InstanceManager。
-    // 若 plugins/ 下无平台 AI 插件或 config.ai.enabled=false，则 facade 缺失，玩法层禁用 AI。
-    if (auto ai_facade = service_registry_.get_service<engine::ai::InstanceAiFacade>("ai.facade")) {
-        instance_manager_.set_instance_ai_facade(ai_facade.get());
-        BEAST_LOG_INFO(
-            "AI service bound via platform plugin provider={} model={}",
-            config_.ai.default_provider,
-            config_.ai.default_model);
-    } else if (config_.ai.enabled) {
-        BEAST_LOG_WARN(
-            "AI enabled in config but no platform ai plugin registered 'ai.facade' service");
-    } else {
-        BEAST_LOG_INFO("AI service disabled in server.json");
     }
 
     // TCP 与 KCP 共享同一个 SessionManager，所以只装一次 on_authenticated 回调。

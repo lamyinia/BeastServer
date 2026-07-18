@@ -34,6 +34,8 @@ class SessionManager;
 
 namespace beast::platform::plugin {
 
+class ServiceRegistry; // 前向声明，供 gameplay 插件查询平台服务（如 LuaVmService）
+
 // 插件初始化时可调用的平台 API；生命周期限于 beast_plugin_init 调用期间及之后只读注册结果。
 class ServerContext {
 public:
@@ -96,6 +98,10 @@ public:
     [[nodiscard]] engine::instance::InstanceManager* instance_manager_ptr() const noexcept {
         return instance_manager_;
     }
+
+    // 查询平台 ServiceRegistry（由 PluginHost 注入），供 gameplay 插件获取平台服务。
+    // 返回 nullptr 表示未注入（平台插件未加载或未配置）。
+    [[nodiscard]] ServiceRegistry* service_registry() const noexcept;
 
 private:
     PluginName plugin_name_;

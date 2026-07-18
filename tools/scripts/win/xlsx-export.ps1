@@ -6,18 +6,14 @@
 .EXAMPLE
   # From BeastServer-project root
   .\tools\scripts\win\xlsx-export.ps1
-  $env:BUILD_TYPE = "Debug"; .\tools\scripts\win\xlsx-export.ps1
 #>
-param(
-    [string]$BuildType = "RelWithDebInfo"
-)
 
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = (Resolve-Path (Join-Path $ScriptDir "..\..\..")).Path
 
-$OutRoot = Join-Path $RepoRoot "beastserver\build\$BuildType\bizconfig"
+$OutRoot = Join-Path $RepoRoot "beastserver\build\bizconfig"
 $RawDir = Join-Path $RepoRoot "bizconfig\static-xlsx"
 $SchemaDir = Join-Path $RepoRoot "bizconfig\scheme"
 $ExportBin = Join-Path $RepoRoot "tools\biz_export\biz_export.exe"

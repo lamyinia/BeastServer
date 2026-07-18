@@ -48,6 +48,10 @@ find_package(GTest REQUIRED)
 beast_configure_conan_protoc()
 beast_find_conan_grpc()
 
+# 插件构建助手（beast_add_plugin / beast_add_biz_protos）：platform/plugins 与
+# gameplays/ 都用。在 add_subdirectory 之前 include，确保函数已定义。
+include(${CMAKE_SOURCE_DIR}/cmake/BeastPlugin.cmake)
+
 add_subdirectory(platform)
 add_subdirectory(gameplays)
 

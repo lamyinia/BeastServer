@@ -66,6 +66,9 @@ AiConfig AiConfig::from_config(const core::config::AiConfigSettings& cfg) {
     result.tos.signed_url_ttl = cfg.tos.signed_url_ttl;
     result.tos.cdn_domain = cfg.tos.cdn_domain;
 
+    result.max_total_connections = cfg.max_total_connections;
+    result.max_host_connections = cfg.max_host_connections;
+
     return result;
 }
 
