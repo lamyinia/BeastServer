@@ -116,7 +116,7 @@ bizconfig/
 在 proto message 上一行用注释声明路由：
 
 ```protobuf
-// route:MessageName|direction|wire_route[|engine_route]
+// route:MessageName|direction|wire_route
 message MyRequest { ... }
 ```
 

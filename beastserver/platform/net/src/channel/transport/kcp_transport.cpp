@@ -103,7 +103,8 @@ void KcpTransport::start(OnBytes on_bytes, OnUnreliableBytes on_unreliable,
 
 void KcpTransport::send(Bytes&& data) {
     boost::asio::post(strand_, [self = shared_from_this(), this, data = std::move(data)]() mutable {
-        if (closed_ || !kcp_ || !socket_.is_open()) {
+        // DTLS 模式下 socket_ 不打开（DtlsTransport 拥有 socket），但 udp_output_replacer_ 处理输出。
+        if (closed_ || !kcp_ || (!socket_.is_open() && !udp_output_replacer_)) {
             return;
         }
         const int ret = ikcp_send(kcp_, reinterpret_cast<const char*>(data.data()), static_cast<int>(data.size()));
@@ -118,7 +119,14 @@ void KcpTransport::send(Bytes&& data) {
 
 void KcpTransport::send_unreliable(Bytes&& frame) {
     boost::asio::post(strand_, [self = shared_from_this(), this, frame = std::move(frame)]() mutable {
-        if (closed_ || !socket_.is_open()) {
+        // DTLS 模式下 socket_ 不打开，但 udp_output_replacer_ 处理输出
+        if (closed_ || (!socket_.is_open() && !udp_output_replacer_)) {
+            return;
+        }
+        // DTLS 替换路径：旁路帧也走 DtlsTransport::encrypt_and_send，与可靠路径一致。
+        // DTLS 提供 AEAD，旁路帧无需在应用层再做背压判定（OpenSSL 内部会处理）。
+        if (udp_output_replacer_) {
+            udp_output_replacer_(std::move(frame));
             return;
         }
         // 背压：旁路语义本就是"最新即正确"，超阈值时丢旧帧，绝不阻塞 KCP 可靠路径。
@@ -141,7 +149,9 @@ void KcpTransport::close() {
 }
 
 bool KcpTransport::is_closed() const noexcept {
-    return closed_ || !socket_.is_open();
+    // DTLS 模式下 socket_ 默认构造（未打开），但 transport 仍正常工作（inject_inbound + replacer）。
+    // 只通过 closed_ flag 判定，避免误报。
+    return closed_;
 }
 
 KcpTransport::Strand KcpTransport::strand() const {
@@ -194,9 +204,19 @@ int KcpTransport::udp_output_cb(const char* buf, int len, ikcpcb* /*kcp*/, void*
 }
 
 int KcpTransport::on_udp_output(const char* buf, int len) {
-    // 同步在 strand 上调用：拷贝后入队，按序 async_send_to。
+    // 同步在 strand 上调用（ikcp_update/ikcp_input/ikcp_send 内部触发）。
+    // 拷贝为独立缓冲：buf 指向 ikcp 内部缓冲，异步发出前必须复制。
     Bytes packet(static_cast<std::size_t>(len));
     std::memcpy(packet.data(), buf, static_cast<std::size_t>(len));
+
+    // DTLS 替换路径：UDP 包经 DtlsTransport::encrypt_and_send 走 DTLS 加密后发出。
+    // 此时 KcpTransport 的 socket_ 不直接发 UDP，而是由 DtlsTransport 接管。
+    if (udp_output_replacer_) {
+        udp_output_replacer_(std::move(packet));
+        return 0;
+    }
+
+    // 默认路径：拷贝后入队，按序 async_send_to。
     write_queue_.push_back(std::move(packet));
     if (!writing_) {
         writing_ = true;
@@ -206,8 +226,12 @@ int KcpTransport::on_udp_output(const char* buf, int len) {
 }
 
 void KcpTransport::do_read() {
-    if (closed_ || !socket_.is_open()) {
-        do_close();
+    if (closed_) {
+        return;
+    }
+    // DTLS 模式下 socket_ 未打开（由 DtlsTransport 拥有 socket），inject_inbound 是唯一入站路径。
+    // 这里直接 return，不调 do_close()，避免误关闭 transport。
+    if (!socket_.is_open()) {
         return;
     }
 

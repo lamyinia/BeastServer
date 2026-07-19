@@ -1,0 +1,61 @@
+/* ============================================================================
+ * 圣白光辉风（Holy Radiance）
+ * ----------------------------------------------------------------------------
+ * 配色：象牙白底 + 玫瑰金强调 + 圣光淡金光晕
+ * 字体：Cormorant Garamond（标题，优雅衬线）/ Inter（正文）/ Cascadia Mono（代码）
+ * 视觉感：古老圣经手抄本 / 圣堂内殿 / 黎明微光
+ * ============================================================================ */
+
+body.theme-holy {
+  /* === 配色 token === */
+  --bg-primary:    #f8f5ed;  /* 象牙白 - 主背景 */
+  --bg-secondary:  #ede8db;  /* 米白 - 次背景 */
+  --bg-card:       #ffffff;    /* 纯白卡片 */
+  --bg-elevated:   #f3efe5;  /* 浅米白 - 悬浮/hover */
+  --bg-inset:      #e8e3d4;  /* 内嵌米格 - 输入框/pre */
+  --border-main:   #c9b27c;  /* 玫瑰金 - 主边框 */
+  --border-strong: #b8901f;  /* 强光金 - 强调边框（深一点保证对比度） */
+  --border-soft:   #d8d2c0;  /* 弱米金 - 弱边框 */
+  --accent:        #b76e3a;  /* 玫瑰金 - 主强调 */
+  --accent-hover:  #c98450;  /* 玫瑰金 hover */
+  --accent-deep:    #8a4f24;  /* 深玫瑰金（按钮底色） */
+  --accent-glow:   rgba(183, 110, 58, 0.25);
+  --success:       #6b8e23;  /* 圣光橄榄绿 - 成功/运行中 */
+  --success-deep:   #4a651a;
+  --success-glow:  rgba(107, 142, 35, 0.3);
+  --error:         #c0392b;  /* 烈焰红 - 错误 */
+  --error-deep:    #8b2a1f;
+  --error-glow:    rgba(192, 57, 43, 0.3);
+  --warn:          #d68910;  /* 警示金 */
+  --info:          #8b7355;  /* 圣光棕 - 信息/链接 */
+  --text-main:     #3a2e1f;  /* 圣墨褐 - 主文字 */
+  --text-muted:    #7a6a4f;  /* 圣土棕 - 次文字 */
+  --text-faint:    #a99a82;  /* 浅米棕 - 弱文字 */
+
+  /* === 按钮文字色 === */
+  --btn-text:          #f8f5ed;  /* 主按钮文字（玫瑰金底浅字） */
+  --btn-success-text:  #f8f5ed;  /* success 按钮文字（橄榄绿底浅字） */
+
+  /* === 字体 token === */
+  --font-display: 'Cormorant Garamond', 'Trajan Pro', 'Times New Roman', serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    'Cascadia Mono', 'JetBrains Mono', 'Fira Code', Consolas, ui-monospace, monospace;
+
+  /* === 尺寸 token === */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --shadow-glow:    0 0 12px var(--accent-glow);
+  --shadow-success: 0 0 8px var(--success-glow);
+  --shadow-error:   0 0 8px var(--error-glow);
+
+  /* === 装饰背景（圣光从顶部洒下） === */
+  --bg-decoration:
+    radial-gradient(ellipse at top, rgba(232, 201, 122, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse at bottom, rgba(201, 178, 124, 0.08) 0%, transparent 50%);
+}
+
+body.theme-holy {
+  background-image: var(--bg-decoration);
+  background-attachment: fixed;
+}

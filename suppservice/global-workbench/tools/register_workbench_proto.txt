@@ -1,0 +1,11 @@
+# register_workbench_proto.txt
+# 每行一个 .proto 相对路径（相对 d:/git-project/BeastServer-project/bizconfig/protocol/）
+# 空行和 # 开头的注释行被忽略
+#
+# sync_workbench_go.ps1 会读这个文件，调 protoc 生成 .pb.go + _grpc.pb.go 到 ../proto/
+
+# v1：平台层 + ping（TCP Ping-Pong 联调页所需）
+platform/envelope.proto
+platform/auth.proto
+platform/room.proto
+game/moba/pixel_moba/ping.proto

@@ -1,0 +1,227 @@
+/* ============================================================================
+ * 全局基础样式
+ * ----------------------------------------------------------------------------
+ * 本文件只放：reset + 通用组件样式（.gw-card / .gw-btn-* 等）。
+ * 主题 token（颜色 / 字体）抽到 themes/*.css，通过 body.theme-xxx 切换。
+ * 组件必须用 var(--xxx)，禁止硬编码颜色，才能跟随主题。
+ * ============================================================================ */
+
+/* 默认主题 = 精灵幻境风（store 在启动时根据 localStorage 覆盖 body class） */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import './themes/elvish.css';
+@import './themes/holy.css';
+@import './themes/dragonborn.css';
+@import './themes/emerald.css';
+@import './themes/void.css';
+@import './themes/abyss.css';
+
+/* === 重置 === */
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+/* === 标题字体 === */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-main);
+  margin: 0;
+}
+
+h1 { font-size: 18px; }
+h2 { font-size: 15px; }
+h3 { font-size: 13px; }
+h4 { font-size: 12px; }
+
+/* === 通用文本 === */
+a {
+  color: var(--info);
+  text-decoration: none;
+  transition: color 0.15s, text-shadow 0.15s;
+}
+a:hover {
+  color: var(--border-strong);
+  text-shadow: 0 0 6px var(--accent-glow);
+}
+
+p { margin: 0 0 8px; }
+
+/* === 卡片容器 === */
+.gw-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  position: relative;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.3s;
+}
+.gw-card:hover {
+  border-color: var(--border-main);
+}
+.gw-card-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--border-strong);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+
+/* === 表单元素 === */
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="search"],
+select {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  /* 显式高度：border-box 模式下 padding 内缩，默认 input height 不够会裁文字。
+   * 32px = padding 12px + content 18px（容纳 13px 字 + line-height 1.4） + border 2px */
+  height: 32px;
+  line-height: 1.4;
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 13px;
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.3s;
+  width: 100%;
+}
+textarea {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  min-height: 60px;
+  line-height: 1.4;
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 13px;
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.3s;
+  width: 100%;
+  resize: vertical;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+input::placeholder { color: var(--text-faint); }
+
+label {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* === 按钮 === */
+button {
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-deep) 100%);
+  color: var(--btn-text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px 16px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 0 0 rgba(0,0,0,0);
+}
+button:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--accent-hover) 0%, var(--accent) 100%);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-glow);
+}
+button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+button:disabled {
+  background: var(--bg-elevated);
+  color: var(--text-faint);
+  border-color: var(--border-soft);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+button.gw-btn-secondary {
+  background: var(--bg-elevated);
+  border-color: var(--border-main);
+  color: var(--text-main);
+}
+button.gw-btn-secondary:hover:not(:disabled) {
+  background: var(--bg-card);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-glow);
+}
+
+button.gw-btn-danger {
+  background: linear-gradient(180deg, var(--error) 0%, var(--error-deep) 100%);
+  border-color: var(--error);
+}
+button.gw-btn-danger:hover:not(:disabled) {
+  box-shadow: var(--shadow-error);
+}
+
+button.gw-btn-success {
+  background: linear-gradient(180deg, var(--success) 0%, var(--success-deep) 100%);
+  border-color: var(--success);
+  color: var(--btn-success-text);
+}
+button.gw-btn-success:hover:not(:disabled) {
+  box-shadow: var(--shadow-success);
+}
+
+/* === 滚动条 === */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-inset);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-soft);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-main);
+}
+
+/* === 通用工具类 === */
+.text-muted { color: var(--text-muted); }
+.text-faint { color: var(--text-faint); }
+.text-success { color: var(--success); }
+.text-error { color: var(--error); }
+.text-warn { color: var(--warn); }
+.text-mono { font-family: var(--font-mono); }
+
+.flex-row { display: flex; align-items: center; gap: 10px; }
+.flex-col { display: flex; flex-direction: column; gap: 8px; }
+.flex-1 { flex: 1; min-width: 0; }

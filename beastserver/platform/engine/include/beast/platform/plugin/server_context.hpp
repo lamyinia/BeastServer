@@ -83,7 +83,7 @@ public:
     bool submit_instance_event(
         net::channel::ChannelHandlerContext& ch_ctx,
         const net::channel::MessagePtr& msg,
-        RouteId engine_route,
+        RouteId route,
         std::vector<std::uint8_t> payload);
 
     // 静态重载：供路由 handler 长期持有 instance_manager 原始指针后调用，
@@ -92,7 +92,7 @@ public:
         engine::instance::InstanceManager* instance_manager,
         net::channel::ChannelHandlerContext& ch_ctx,
         const net::channel::MessagePtr& msg,
-        RouteId engine_route,
+        RouteId route,
         std::vector<std::uint8_t> payload);
 
     [[nodiscard]] engine::instance::InstanceManager* instance_manager_ptr() const noexcept {

@@ -1,0 +1,26 @@
+# 构建产物
+bin/
+build/bin/
+node_modules
+frontend/dist
+frontend/bindings/
+
+# v3 Windows 资源文件（wails3 generate syso 生成）
+*.syso
+
+# v1 新增：proto 生成产物（sync_workbench_go.ps1 重新生成）
+proto/
+
+# Wails 平台构建目录（仅 ignore 临时构建产物，build/ 配置文件需进 git）
+wails-windows/
+wails-darwin/
+wails-linux/
+
+# IDE
+.idea/
+.vscode/
+
+# Go 测试产物
+*.test
+*.out
+coverage.txt

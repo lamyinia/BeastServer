@@ -5,7 +5,7 @@
 ## 格式
 
 ```protobuf
-// route:<MessageName>|<direction>|<wire_route>[|<engine_route>]
+// route:<MessageName>|<direction>|<wire_route>
 message MessageName {
   ...
 }
@@ -15,8 +15,7 @@ message MessageName {
 |------|------|------|
 | `MessageName` | 是 | 必须与下一行 `message` 名一致（脚本校验） |
 | `direction` | 是 | 见下表 |
-| `wire_route` | 是 | TCP Envelope 上的 route 字符串 |
-| `engine_route` | 否 | 服务端引擎内部 route；省略时等于 `wire_route` |
+| `wire_route` | 是 | TCP Envelope 上的 route 字符串；同时也是引擎内部 `InstanceEvent::route` 的值 |
 
 ### direction
 
@@ -32,7 +31,7 @@ message MessageName {
 ## 示例
 
 ```protobuf
-// route:PingRequest2|c2s|demo.event.ping2|ping2
+// route:PingRequest2|c2s|demo.event.ping2
 message PingRequest2 {
   string text = 1;
 }
@@ -91,3 +90,7 @@ python sdk/tools/gen_routes_from_proto.py --proto ... --verify-plugin beastserve
 | **generated `*_routes.gd`** | 脚本输出，禁止手改 |
 
 业务 proto **不要** 生成进 `beast_sdk/generated/`；按 consumer 输出到 `sdk/demo/`、`pixel-moba/generated/` 等。
+
+## 历史变更
+
+- **2026-07-19**：去除 `engine_route` 字段（原可选第 4 段 alias）。`InstanceEvent::route` 现在始终存 `wire_route`，engine `on_event` 里的 `BEAST_ENGINE_EVENT_PROTO_*` 宏也直接用 `wire_route` 字符串匹配。理由：alias 与 wire 双份字面量必须人工保持一致，bug 概率高（无静态检查），且实际从未用到 wire/engine 解耦能力。

@@ -42,7 +42,7 @@ public:
 register_parsed_route<MyRequest>(ctx, "route.name", handler);
 
 // 局内路由：解析 proto → 转引擎 payload → submit_event
-register_instance_route<MyRequest>(ctx, "route.name", "engine_action", to_payload);
+register_instance_route<MyRequest>(ctx, "route.name", to_payload);
 ```
 
 ## 服务注册（平台插件）

@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package beast.demo;
+
+// ==========================================================================
+// Stress Event / Stress Tick 压测插件协议
+//
+// 设计目标：
+//   - stress_event：EventDriven 模式，测 burst 事件处理吞吐
+//   - stress_tick：FixedTick 模式，测固定 tick 下持续负载吞吐
+//   - 两个玩法 route 名 + proto 完全一致，压测者可对比同负载下两模式差异
+//
+// 使用流程：
+//   1. 压测客户端 CreateRoom(stress_event 或 stress_tick)
+//   2. N 个 bot 通过 EnterRoom 加入同一 instance
+//   3. 各 bot 周期性发 stress.echo 或 stress.compute
+//   4. 周期性查 stress.metrics.query 拉取服务端累计指标
+//
+// 1000 bot 场景建议：
+//   - 单 instance 1000 bot：测单 carrier 极限
+//   - 10 instance × 100 bot：测多 instance 调度
+//   - 不限制 bot 分布，压测者自行决定
+//
+// 指标收集：
+//   - 服务端维护原子计数器（total_echo_req/resp、total_compute_req/resp、total_errors）
+//   - 通过 stress.metrics.query route 拉取当前快照
+//   - 计数器从 instance 创建起累计，instance 销毁即清
+//
+// 环境约束（压测前需自行准备，服务端启动时会 WARN 检查）：
+//   - ulimit -n >= 65535（1000 bot 占 ~1000 fd + 内部 fd）
+//   - 默认 accept backlog 视 beastserver TCP 配置，1000 bot 突发 connect 时可能丢 SYN
+//   - 推荐压测客户端 ramp-up connect（每秒 50-100 个），避免瞬时 SYN 风暴
+//
+// RTT 测量说明：
+//   - EchoResponse / ComputeResponse 携带三个时间戳：
+//     * client_send_ts_ms：客户端发送时填，服务端原样回包
+//     * server_recv_ts_ms：服务端 IO 线程收到时填（在 engine on_event 中取）
+//     * server_send_ts_ms：服务端 send 前填
+//   - 客户端计算：
+//     * end_to_end_rtt = client_recv_ts - client_send_ts
+//     * uplink_latency = server_recv_ts - client_send_ts
+//     * engine_processing = server_send_ts - server_recv_ts
+//     * downlink_latency = client_recv_ts - server_send_ts
+//   - 注意：客户端在宿主机走虚拟网卡时，uplink/downlink latency 含 hypervisor 网络开销
+//
+// 日志策略：
+//   - stress.echo / stress.compute 默认不打 INFO 日志（避免 1000 bot 场景日志风暴）
+//   - 仅 total_errors 增加时打 WARN
+//   - 压测者需要 debug 时可临时调高 log level
+// ==========================================================================
+
+// === 1) Echo：测 IO + carrier 调度吞吐 ===
+// route:EchoRequest|c2s|stress.echo
+message EchoRequest {
+  uint64 client_send_ts_ms = 1;   // 客户端发送时间戳（steady_clock 毫秒），服务端原样回包
+  bytes payload = 2;               // 可选 payload，测不同大小（不超过 max_frame_bytes=65536）
+}
+
+// route:EchoResponse|s2c|stress.echo.resp
+message EchoResponse {
+  uint64 client_send_ts_ms = 1;    // 原样回包
+  uint64 server_recv_ts_ms = 2;    // 服务端收到时间戳
+  uint64 server_send_ts_ms = 3;    // 服务端发送时间戳
+  bytes payload = 4;               // 原样回包
+}
+
+// === 2) Compute：测 CPU 压力（简化版听牌算法）===
+// route:ComputeRequest|c2s|stress.compute
+message ComputeRequest {
+  uint64 client_send_ts_ms = 1;
+  repeated string tiles = 2;      // 13 张手牌 ["1m","2m","3m","east",...]
+                                   //   数牌：1m-9m / 1p-9p / 1s-9s
+                                   //   字牌：east / south / west / north
+                                   //   （不含白发中，简化版算法）
+  uint32 iterations = 3;           // 重复计算次数（让单次 CPU 工作可调）
+                                   //   服务端会重复调用 is_tenpai iterations 次
+                                   //   iterations=0 视为 1
+}
+
+// route:ComputeResponse|s2c|stress.compute.resp
+message ComputeResponse {
+  uint64 client_send_ts_ms = 1;
+  uint64 server_recv_ts_ms = 2;
+  uint64 server_send_ts_ms = 3;
+  bool is_tenpai = 4;              // 最后一次迭代的结果
+  uint32 iterations_done = 5;      // 实际执行的迭代次数
+}
+
+// === 3) Metrics 查询：拉取服务端累计指标快照 ===
+// route:MetricsQueryRequest|c2s|stress.metrics.query
+message MetricsQueryRequest {
+  // 预留字段，当前无参数
+}
+
+// route:MetricsQueryResponse|s2c|stress.metrics.query.resp
+message MetricsQueryResponse {
+  // === 请求计数（从 instance 创建起累计）===
+  uint64 total_echo_req = 1;       // 收到的 stress.echo 总数
+  uint64 total_echo_resp = 2;      // 发出的 stress.echo.resp 总数
+  uint64 total_compute_req = 3;    // 收到的 stress.compute 总数
+  uint64 total_compute_resp = 4;   // 发出的 stress.compute.resp 总数
+  uint64 total_errors = 5;         // 处理失败的总数（parse 失败 / send 失败等）
+
+  // === 实例上下文 ===
+  string instance_id = 6;          // 当前 instance ID
+  uint64 instance_uptime_ms = 7;   // instance 已运行时长（毫秒）
+}

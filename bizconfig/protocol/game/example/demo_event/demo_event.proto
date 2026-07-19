@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package beast.demo;
 
-// route:PingRequest1|c2s|demo.event.ping1|ping1
+// route:PingRequest1|c2s|demo.event.ping1
 message PingRequest1 {
   string text = 1;
 }
@@ -12,7 +12,7 @@ message PingPush1 {
   string text = 1;
 }
 
-// route:PingRequest2|c2s|demo.event.ping2|ping2
+// route:PingRequest2|c2s|demo.event.ping2
 message PingRequest2 {
   string text = 1;
 }
@@ -22,7 +22,7 @@ message PingPush2 {
   string text = 1;
 }
 
-// route:PingRequest3|c2s|demo.event.ping3|ping3
+// route:PingRequest3|c2s|demo.event.ping3
 message PingRequest3 {
   string text = 1;
 }
@@ -32,7 +32,7 @@ message PingPush3 {
   string text = 1;
 }
 
-// route:PingRequest4|c2s|demo.event.ping4|ping4
+// route:PingRequest4|c2s|demo.event.ping4
 message PingRequest4 {
   string text = 1;
 }
@@ -42,7 +42,7 @@ message PingPush4 {
   string text = 1;
 }
 
-// route:PingRequest5|c2s|demo.event.ping5|ping5
+// route:PingRequest5|c2s|demo.event.ping5
 message PingRequest5 {
   string text = 1;
 }

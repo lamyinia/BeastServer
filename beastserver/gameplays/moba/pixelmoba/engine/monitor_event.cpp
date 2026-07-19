@@ -9,16 +9,16 @@ namespace beast::moba::pixel {
 // 仅收集输入到 inputs_ + log(监听),不做游戏逻辑;真正消费在 on_tick 的 consume_inputs。
 void PixelMobaEngine::on_event(const beast::platform::engine::instance::InstanceEvent& event) {
     BEAST_ENGINE_EVENT_SWITCH(event)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("hero_select", HeroSelectCmd, on_hero_select)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("ping", PingCmd, on_ping)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("load_complete", LoadCompleteCmd, on_load_complete)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("move", MoveCmd, on_move)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("cast", CastCmd, on_cast)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("attack", AttackCmd, on_attack)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("buy", BuyItemCmd, on_buy)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("sell", SellItemCmd, on_sell)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("level_up_skill", LevelUpSkillCmd, on_level_up_skill)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("reconnect", ReconnectCmd, on_reconnect)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("pixelmoba.heroselect", HeroSelectCmd, on_hero_select)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("pixelmoba.ping", PingCmd, on_ping)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("pixelmoba.loadcomplete", LoadCompleteCmd, on_load_complete)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("pixelmoba.move", MoveCmd, on_move)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("pixelmoba.cast", CastCmd, on_cast)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("pixelmoba.attack", AttackCmd, on_attack)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("pixelmoba.buy", BuyItemCmd, on_buy)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("pixelmoba.sell", SellItemCmd, on_sell)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("pixelmoba.levelupskill", LevelUpSkillCmd, on_level_up_skill)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("pixelmoba.reconnect", ReconnectCmd, on_reconnect)
     BEAST_ENGINE_EVENT_SWITCH_END
 }
 

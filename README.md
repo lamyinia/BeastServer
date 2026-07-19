@@ -58,11 +58,12 @@ cmake --build build -j$(nproc)
 BeastServer-project/
 ├── beastserver/
 │   ├── platform/          # 框架核心（core/net/engine/ai/server）
-│   ├── plugins/           # 平台插件（AI 集成等）
+│   ├── plugins/           # 平台插件（AI / DirtyPersist / HotLua）
 │   └── gameplays/         # 玩法插件（demo/moba/board）
 ├── bizconfig/             # 策划表 Excel + schema + 通信 proto
 ├── sdk/                   # 客户端 SDK（Godot / C++ Native）
 ├── tools/                 # 策划表导出工具（biz_export）
+├── suppservice/           # 辅助服务（global-workbench 联调工作台）
 └── docs/                  # 文档
 ```
 
@@ -75,10 +76,41 @@ BeastServer-project/
 | [插件开发](docs/plugin-development.md) | 玩法插件 + 平台插件开发指南 |
 | [配置参考](docs/configuration.md) | server.json 全字段说明 |
 | [传输层](docs/transport.md) | TCP/KCP/WebSocket、TLS、不可靠子通道 |
-| [AI 引擎接入](docs/ai-engine.md) | Receipt/Decision/Tools 三类 AI 接入 |
+| [AI 插件接入](docs/ai-engine.md) | Receipt/Decision/Tools 三类 AI 接入 |
+| [HotLua 插件接入](docs/hotlua-plugin.md) | LuaVm 隔离 VM、脚本热重载、HotluaBroker |
+| [DirtyPersist 插件接入](docs/dirtypersist-plugin.md) | 字段级 dirty + debounce flush + Boost.MySQL |
 | [工具链](docs/toolchain.md) | 策划表导出、客户端 SDK、协议定义 |
 | [API 速查](docs/api-reference.md) | 核心组件与头文件 |
 | [常见问题](docs/faq.md) | 排障与 FAQ |
+| [贡献指南](CONTRIBUTING.md) | 构建/测试验证、跨领域同步、硬约束 |
+
+## 辅助服务
+
+除玩法插件外，仓库包含若干辅助服务与平台插件：
+
+| 模块 | 路径 | 类型 | 说明 |
+|------|------|------|------|
+| global-workbench | `suppservice/global-workbench/` | 桌面应用 | Wails v3 + Vue 3 桌面联调工作台 |
+| AI 插件 | `beastserver/plugins/ai/` | 平台插件 | LLM 集成（Receipt/Decision/Tools），详见 [AI 插件接入](docs/ai-engine.md) |
+| HotLua | `beastserver/plugins/hotlua/` | 平台插件 | Lua 热更新（LuaVmService + HotluaBroker），详见 [HotLua 插件接入](docs/hotlua-plugin.md) |
+| DirtyPersist | `beastserver/plugins/dirtypersist/` | 平台插件 | 字段级 dirty + Boost.MySQL 异步 flush，详见 [DirtyPersist 插件接入](docs/dirtypersist-plugin.md) |
+
+### global-workbench
+
+桌面联调工作台，与 `beastserver/` / `sdk/` / `bizconfig/` 平级。基于 Wails v3 + Vue 3，按"树形目录 + 每叶子一页"组织联调页面，工具跟着玩法一起长，不是通用发包器。
+
+- v1 MVP：Go target + 1 个 TCP Ping-Pong 联调页
+- v2+：C++ / Godot target、TLS / KCP / WebSocket transport、并发压测、bot 池
+- 设计文档：[v1-design.md](suppservice/global-workbench/docs/v1-design.md)
+- 入口：`suppservice/global-workbench/main.go`
+
+### HotLua
+
+平台插件，注册 `hotlua.service`（LuaVmService）与 `hotlua.broker`（HotluaBroker）到 ServiceRegistry。玩法插件通过 ServiceRegistry 获取 `hotlua.service` 后 `create_vm` 创建隔离的 Lua VM，做脚本热更新逻辑。`hotlua.broker` 提供 gRPC 与引擎同步入口（参考 `gameplays/example/demo_hotlua`）。
+
+### DirtyPersist
+
+平台插件，注册 `dirtypersist.service` 与 `dirtypersist.facade` 到 ServiceRegistry。采用 Boost.MySQL（header-only，原生 Boost.Asio async/awaitable，无新增 libmysqlclient 依赖）+ 字段级 dirty tracking + FlushScheduler debounce 调度。玩法引擎通过 `InstanceDirtyPersistFacade` mixin 接入。
 
 ## 示例插件
 
@@ -96,4 +128,6 @@ ctest --test-dir build --output-on-failure
 
 ## License
 
-待定（与主仓库保持一致）。
+私有项目，未授权使用、复制、修改、分发。
+
+正式 License 待定（与主仓库统一），生效前一律按私有处理。如需使用、合作或咨询，请联系维护者。

@@ -1,0 +1,62 @@
+/* ============================================================================
+ * 精灵幻境风（Elvish Wonder）
+ * ----------------------------------------------------------------------------
+ * 配色：深紫黑底 + 银紫荧光 + 紫水晶强调
+ * 字体：Cinzel Decorative（标题）/ Inter（正文）/ Cascadia Mono（代码）
+ * ============================================================================ */
+
+/* 默认主题：根作用域也用这套，避免 body class 未设置时 fallback 失败 */
+:root,
+body.theme-elvish {
+  /* === 配色 token === */
+  --bg-primary:    #0d0a1f;  /* 深紫黑 - 主背景 */
+  --bg-secondary:  #1a1530;  /* 暗紫 - 次背景 */
+  --bg-card:       #221b3d;  /* 微亮紫 - 卡片背景 */
+  --bg-elevated:   #2a2147;  /* 高亮紫 - 悬浮/hover */
+  --bg-inset:      #0a0717;  /* 内嵌暗格 - 输入框/pre */
+  --border-main:   #7c6db5;  /* 银紫 - 主边框 */
+  --border-strong: #a896e6;  /* 荧光紫 - 强调边框 */
+  --border-soft:   #3d3160;  /* 弱紫 - 弱边框 */
+  --accent:        #9b59b6;  /* 紫水晶 - 主强调 */
+  --accent-hover:  #b06fd0;  /* 紫水晶 hover */
+  --accent-deep:    #7d3c98;  /* 渐变深色版（按钮底色） */
+  --accent-glow:   rgba(155, 89, 182, 0.4);
+  --success:       #5eead4;  /* 薄荷翡翠 - 成功/运行中 */
+  --success-deep:   #14b8a6;
+  --success-glow:  rgba(94, 234, 212, 0.5);
+  --error:         #f472b6;  /* 玫粉 - 错误 */
+  --error-deep:    #c43679;
+  --error-glow:    rgba(244, 114, 182, 0.5);
+  --warn:          #fbbf24;  /* 琥珀金 - 警告 */
+  --info:          #a5b4fc;  /* 银紫 - 信息/链接 */
+  --text-main:     #e0e7ff;  /* 月光银 - 主文字 */
+  --text-muted:    #a5b4fc;  /* 银紫 - 次文字 */
+  --text-faint:    #6b6494;  /* 暗银 - 弱文字 */
+
+  /* === 按钮文字色 === */
+  --btn-text:          #e0e7ff;  /* 主按钮文字（深底浅字） */
+  --btn-success-text:  #0d0a1f;  /* success 按钮文字（浅底深字） */
+
+  /* === 字体 token === */
+  --font-display: 'Cinzel Decorative', 'Trajan Pro', 'Times New Roman', serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    'Cascadia Mono', 'JetBrains Mono', 'Fira Code', Consolas, ui-monospace, monospace;
+
+  /* === 尺寸 token === */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --shadow-glow:    0 0 12px var(--accent-glow);
+  --shadow-success: 0 0 8px var(--success-glow);
+  --shadow-error:   0 0 8px var(--error-glow);
+
+  /* === 装饰背景（夜空魔法气息） === */
+  --bg-decoration:
+    radial-gradient(ellipse at top, rgba(124, 109, 181, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at bottom, rgba(155, 89, 182, 0.05) 0%, transparent 50%);
+}
+
+body.theme-elvish {
+  background-image: var(--bg-decoration);
+  background-attachment: fixed;
+}

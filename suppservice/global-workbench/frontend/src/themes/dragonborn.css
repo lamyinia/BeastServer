@@ -1,0 +1,61 @@
+/* ============================================================================
+ * 暗夜龙裔（Dragonborn）
+ * ----------------------------------------------------------------------------
+ * 配色：暗赤铜黑底 + 龙鳞金强调 + 烈焰红错误
+ * 字体：Cinzel（厚重衬线，比 Decorative 更肃穆，像古老龙语铭文）
+ * 视觉感：龙与地下城 / 龙裔血脉 / 古老符文
+ * ============================================================================ */
+
+body.theme-dragonborn {
+  /* === 配色 token === */
+  --bg-primary:    #1a0f08;  /* 暗赤铜黑 - 主背景 */
+  --bg-secondary:  #261810;  /* 暗棕 - 次背景 */
+  --bg-card:       #2e1c12;  /* 暗赤棕 - 卡片 */
+  --bg-elevated:   #3a2418;  /* 高亮赤棕 - 悬浮/hover */
+  --bg-inset:      #0e0805;  /* 内嵌深暗 - 输入框/pre */
+  --border-main:   #8b5a2b;  /* 古铜 - 主边框 */
+  --border-strong: #d4a017;  /* 龙鳞金 - 强调边框 */
+  --border-soft:   #4a2f1c;  /* 弱赤铜 - 弱边框 */
+  --accent:        #b87333;  /* 赤铜 - 主强调 */
+  --accent-hover:  #d4905a;  /* 赤铜 hover */
+  --accent-deep:    #8b5a2b;  /* 深赤铜（按钮底色） */
+  --accent-glow:   rgba(184, 115, 51, 0.4);
+  --success:       #50c878;  /* 龙眼翡翠绿 - 成功 */
+  --success-deep:   #2e8b57;
+  --success-glow:  rgba(80, 200, 120, 0.5);
+  --error:         #dc143c;  /* 烈焰红 - 错误 */
+  --error-deep:    #8b0a2a;
+  --error-glow:    rgba(220, 20, 60, 0.5);
+  --warn:          #ff8c00;  /* 暗金橙 */
+  --info:          #cd853f;  /* 铜金 - 信息/链接 */
+  --text-main:     #f5deb3;  /* 麦色（古卷羊皮纸）- 主文字 */
+  --text-muted:    #c19a6b;  /* 古铜银 - 次文字 */
+  --text-faint:    #8b7355;  /* 暗铜 - 弱文字 */
+
+  /* === 按钮文字色 === */
+  --btn-text:          #f5deb3;  /* 主按钮文字（赤铜底浅字） */
+  --btn-success-text:  #1a0f08;  /* success 按钮文字（翡翠绿底深字） */
+
+  /* === 字体 token === */
+  --font-display: 'Cinzel', 'Trajan Pro', 'Times New Roman', serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    'Cascadia Mono', 'JetBrains Mono', 'Fira Code', Consolas, ui-monospace, monospace;
+
+  /* === 尺寸 token === */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --shadow-glow:    0 0 12px var(--accent-glow);
+  --shadow-success: 0 0 8px var(--success-glow);
+  --shadow-error:   0 0 8px var(--error-glow);
+
+  /* === 装饰背景（龙鳞金光从顶部） === */
+  --bg-decoration:
+    radial-gradient(ellipse at top, rgba(212, 160, 23, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse at bottom, rgba(184, 115, 51, 0.06) 0%, transparent 50%);
+}
+
+body.theme-dragonborn {
+  background-image: var(--bg-decoration);
+  background-attachment: fixed;
+}

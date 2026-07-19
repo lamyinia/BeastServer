@@ -8,6 +8,12 @@ gtest/1.14.0
 libcurl/8.12.1
 lua/5.4.6
 sol2/3.3.0
+# Dirtypersist 后端可选依赖：默认不开 option 不会编译进核心库
+# 启用方式：cmake -DBEAST_DIRTYPERSIST_WITH_MONGO=ON / -DBEAST_DIRTYPERSIST_WITH_MYSQL=ON
+mongo-cxx-driver/3.10.1
+# MySQL backend 用 Boost.MySQL（boost/1.86.0 自带，header-only，零新增依赖）
+# Boost.MySQL 原生支持 Boost.Asio async/awaitable，不需要 db_pool 线程池桥接
+# 备选 libmysqlclient 有 zstd 版本冲突（要求 1.5.5 与项目 1.5.7 冲突），放弃
 
 [generators]
 CMakeDeps

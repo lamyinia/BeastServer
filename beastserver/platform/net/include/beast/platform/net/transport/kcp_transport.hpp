@@ -79,6 +79,11 @@ public:
     using OnError = std::function<void(const std::error_code&)>;
     /// 旁路不可靠帧回调：demux 后的 unreliable frame 整帧（含 8 字节 header）按值投递。
     using OnUnreliableBytes = std::function<void(Bytes&&)>;
+    /// UDP 输出替换回调：用于 DtlsTransport 集成。
+    /// 默认为 nullptr：走 KcpTransport 自己的 socket async_send_to 路径。
+    /// 设置后：ikcp output 输出的 UDP 包通过此回调投递（通常是 DtlsTransport::encrypt_and_send）。
+    /// 旁路不可靠帧也会通过此回调投递（如启用）。
+    using UdpOutputReplacer = std::function<void(Bytes&&)>;
 
     KcpTransport(UdpSocket socket, Strand strand, KcpTransportConfig config = {});
 
@@ -108,6 +113,14 @@ public:
 
     /// 设置远端 endpoint（KcpServer 在 on_new_peer 拿到首包 sender 后调用）。
     void set_remote_endpoint(Endpoint endpoint);
+
+    /// 设置 UDP 输出替换回调（用于 DtlsTransport 集成）。
+    /// 设置后：ikcp output 输出的 UDP 包不再走 socket async_send_to，
+    /// 而是通过此回调投递（通常是 DtlsTransport::encrypt_and_send）。
+    /// 必须在 start() 之前调用。
+    void set_udp_output_replacer(UdpOutputReplacer replacer) {
+        udp_output_replacer_ = std::move(replacer);
+    }
 
     /// 主动注入 UDP 入站数据（共享 socket 模式下由 UdpListener demux 后调用）。
     /// 经 ikcp_input 喂给 KCP，再轮询 ikcp_recv 取出可靠交付的应用层字节。
@@ -145,6 +158,9 @@ private:
     OnError on_error_;
     /// 旁路不可靠帧回调；为 nullptr 时 demux 命中 magic 的包会被丢弃（3-arg start 路径）。
     OnUnreliableBytes on_unreliable_bytes_;
+    /// UDP 输出替换回调；为 nullptr 时走 socket async_send_to（默认）。
+    /// 设置后用于 DtlsTransport 集成：UDP 包经此回调走 DTLS 加密。
+    UdpOutputReplacer udp_output_replacer_;
 
     ikcpcb* kcp_{nullptr};
 

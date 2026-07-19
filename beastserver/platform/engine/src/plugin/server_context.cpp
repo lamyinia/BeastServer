@@ -91,9 +91,9 @@ InstanceId ServerContext::instance_id_for(const PlayerId& player_id) const {
 bool ServerContext::submit_instance_event(
     net::channel::ChannelHandlerContext& ch_ctx,
     const net::channel::MessagePtr& msg,
-    RouteId engine_route,
+    RouteId route,
     std::vector<std::uint8_t> payload) {
-    return submit_instance_event(instance_manager_, ch_ctx, msg, std::move(engine_route), std::move(payload));
+    return submit_instance_event(instance_manager_, ch_ctx, msg, std::move(route), std::move(payload));
 }
 
 ServiceRegistry* ServerContext::service_registry() const noexcept {
@@ -107,7 +107,7 @@ bool ServerContext::submit_instance_event(
     engine::instance::InstanceManager* instance_manager,
     net::channel::ChannelHandlerContext& ch_ctx,
     const net::channel::MessagePtr& msg,
-    RouteId engine_route,
+    RouteId route,
     std::vector<std::uint8_t> payload) {
     if (!instance_manager) {
         ch_ctx.send_error_response(msg, "engine unavailable");
@@ -123,7 +123,7 @@ bool ServerContext::submit_instance_event(
     engine::instance::InstanceEvent event;
     event.instance_id = instance_id;
     event.player_id = ch_ctx.player_id();
-    event.route = std::move(engine_route);
+    event.route = std::move(route);
     event.payload = std::move(payload);
     event.client_seq = msg->client_seq;
 

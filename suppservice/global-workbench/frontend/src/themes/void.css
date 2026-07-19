@@ -1,0 +1,61 @@
+/* ============================================================================
+ * 虚空幽影（Void）
+ * ----------------------------------------------------------------------------
+ * 配色：纯黑底 + 银白强调 + 霓虹冷光
+ * 字体：JetBrains Mono（赛博极简风，标题用 mono 字体）
+ * 视觉感：赛博哥特 / 极简虚空 / 黑客终端
+ * ============================================================================ */
+
+body.theme-void {
+  /* === 配色 token === */
+  --bg-primary:    #000000;  /* 纯黑 - 主背景 */
+  --bg-secondary:  #0a0a0a;  /* 暗黑 - 次背景 */
+  --bg-card:        #141414;  /* 微亮黑 - 卡片 */
+  --bg-elevated:    #1c1c1c;  /* 高亮黑 - 悬浮/hover */
+  --bg-inset:       #050505;  /* 内嵌纯黑 - 输入框/pre */
+  --border-main:    #4a4a4a;  /* 中灰 - 主边框 */
+  --border-strong:  #c0c0c0;  /* 银白 - 强调边框 */
+  --border-soft:    #2a2a2a;  /* 弱灰 - 弱边框 */
+  --accent:         #b0b0b0;  /* 银灰 - 主强调 */
+  --accent-hover:   #d0d0d0;  /* 银白 hover */
+  --accent-deep:     #707070;  /* 深银（按钮底色） */
+  --accent-glow:    rgba(192, 192, 192, 0.3);
+  --success:        #00ffcc;  /* 冷青光 - 成功 */
+  --success-deep:    #00b894;
+  --success-glow:   rgba(0, 255, 204, 0.5);
+  --error:          #ff0066;  /* 霓虹粉红 - 错误 */
+  --error-deep:     #cc0033;
+  --error-glow:     rgba(255, 0, 102, 0.5);
+  --warn:           #ffaa00;  /* 霓虹橙 */
+  --info:           #66ccff;  /* 冷青蓝 - 信息/链接 */
+  --text-main:      #e8e8e8;  /* 银白 - 主文字 */
+  --text-muted:     #a0a0a0;  /* 中银 - 次文字 */
+  --text-faint:     #606060;  /* 暗银 - 弱文字 */
+
+  /* === 按钮文字色 === */
+  --btn-text:          #000000;  /* 主按钮文字（银灰底深字） */
+  --btn-success-text:  #000000;  /* success 按钮文字（青光底深字） */
+
+  /* === 字体 token（极简风：标题用 mono 字体） === */
+  --font-display: 'JetBrains Mono', 'Cascadia Mono', 'Fira Code', Consolas, ui-monospace, monospace;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Cascadia Mono', 'Fira Code', Consolas, ui-monospace, monospace;
+
+  /* === 尺寸 token === */
+  --radius-sm: 2px;  /* 极简风用更小的圆角 */
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --shadow-glow:    0 0 12px var(--accent-glow);
+  --shadow-success: 0 0 8px var(--success-glow);
+  --shadow-error:   0 0 8px var(--error-glow);
+
+  /* === 装饰背景（极简冷光） === */
+  --bg-decoration:
+    radial-gradient(ellipse at top, rgba(192, 192, 192, 0.05) 0%, transparent 60%),
+    radial-gradient(ellipse at bottom, rgba(255, 255, 255, 0.02) 0%, transparent 50%);
+}
+
+body.theme-void {
+  background-image: var(--bg-decoration);
+  background-attachment: fixed;
+}

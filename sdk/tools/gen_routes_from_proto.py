@@ -11,13 +11,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+# 注意：不再支持 engine_route alias（第 4 段）。
+# InstanceEvent::route 始终存 wire_route，engine on_event 宏也用 wire_route 字符串匹配。
 ROUTE_LINE = re.compile(
-    r"^\s*//\s*route:(?P<msg>[A-Za-z_]\w*)\|(?P<dir>[a-z][a-z0-9_]*)\|(?P<wire>[^\s|]+)(?:\|(?P<engine>[^\s|]+))?\s*$"
+    r"^\s*//\s*route:(?P<msg>[A-Za-z_]\w*)\|(?P<dir>[a-z][a-z0-9_]*)\|(?P<wire>[^\s|]+)\s*$"
 )
 MESSAGE_LINE = re.compile(r"^\s*message\s+(?P<name>[A-Za-z_]\w*)\s*\{")
 
+# plugin.cpp 里 register_instance_route 调用形式（简化后只匹配 wire_route）：
+#   register_instance_route<T>(ctx, "wire_route")
+#   register_instance_route<T>(ctx, "wire_route", make_payload)
+# 非模板版本：
+#   register_instance_route(ctx, "wire_route")
 PLUGIN_C2S = re.compile(
-    r'register_instance_route<\s*[\w:]+\s*>\(\s*ctx,\s*"([^"]+)"(?:,\s*"([^"]+)")?'
+    r'register_instance_route(?:<\s*[\w:]+\s*>)?\(\s*ctx,\s*"([^"]+)"'
 )
 
 
@@ -26,7 +33,6 @@ class RouteEntry:
     message: str
     direction: str
     wire_route: str
-    engine_route: str
     proto_file: str
     line_no: int
 
@@ -49,6 +55,18 @@ def parse_proto_routes(proto_path: Path) -> list[RouteEntry]:
         line = line.rstrip("\r\n")
         match = ROUTE_LINE.match(line)
         if not match:
+            # 兼容历史 proto：如果注释带了第 4 段 engine_route alias，正则不匹配
+            # 但仍然给出明确报错，提示调用方更新 proto 注释
+            legacy = re.match(
+                r"^\s*//\s*route:[A-Za-z_]\w*\|[a-z][a-z0-9_]*\|[^\s|]+\|[^\s|]+\s*$",
+                line,
+            )
+            if legacy:
+                raise ValueError(
+                    f"{proto_path}:{idx + 1}: route comment has legacy engine_route alias "
+                    f"(4th `|`-separated field is no longer supported): {line!r}. "
+                    f"Remove the 4th field; InstanceEvent::route now stores wire_route directly."
+                )
             continue
 
         msg_line = lines[idx + 1].rstrip("\r\n") if idx + 1 < len(lines) else ""
@@ -61,14 +79,11 @@ def parse_proto_routes(proto_path: Path) -> list[RouteEntry]:
                 f"!= {msg_match.group('name')!r}"
             )
 
-        wire = match.group("wire")
-        engine = match.group("engine") or wire
         entries.append(
             RouteEntry(
                 message=match.group("msg"),
                 direction=match.group("dir"),
-                wire_route=wire,
-                engine_route=engine,
+                wire_route=match.group("wire"),
                 proto_file=str(proto_path),
                 line_no=idx + 1,
             )
@@ -91,26 +106,24 @@ def emit_gdscript(entries: Iterable[RouteEntry], class_name: str, proto_path: Pa
     return "\n".join(lines)
 
 
-def parse_plugin_c2s(plugin_path: Path) -> list[tuple[str, str]]:
+def parse_plugin_c2s(plugin_path: Path) -> list[str]:
+    """从 plugin.cpp 提取所有 register_instance_route 的 wire_route 字符串。"""
     text = plugin_path.read_text(encoding="utf-8")
-    result: list[tuple[str, str]] = []
-    for wire, engine in PLUGIN_C2S.findall(text):
-        result.append((wire, engine or wire))
-    return result
+    return PLUGIN_C2S.findall(text)
 
 
 def verify_plugin(entries: list[RouteEntry], plugin_path: Path) -> list[str]:
     errors: list[str] = []
     c2s_entries = [e for e in entries if e.direction in ("c2s", "c2s_resp")]
-    expected = {(e.wire_route, e.engine_route) for e in c2s_entries}
+    expected = {e.wire_route for e in c2s_entries}
     actual = set(parse_plugin_c2s(plugin_path))
 
     missing = expected - actual
     extra = actual - expected
-    for wire, engine in sorted(missing):
-        errors.append(f"plugin missing register_instance_route wire={wire!r} engine={engine!r}")
-    for wire, engine in sorted(extra):
-        errors.append(f"plugin extra register_instance_route wire={wire!r} engine={engine!r} (not in proto route comments)")
+    for wire in sorted(missing):
+        errors.append(f"plugin missing register_instance_route wire={wire!r}")
+    for wire in sorted(extra):
+        errors.append(f"plugin extra register_instance_route wire={wire!r} (not in proto route comments)")
     return errors
 
 
@@ -158,7 +171,6 @@ def main() -> int:
                 "message": e.message,
                 "direction": e.direction,
                 "wire_route": e.wire_route,
-                "engine_route": e.engine_route,
                 "proto_file": e.proto_file,
                 "line": e.line_no,
             }

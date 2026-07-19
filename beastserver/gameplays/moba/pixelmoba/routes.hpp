@@ -13,31 +13,32 @@
 namespace beast::moba::pixel {
 
 // 局内 c2s 路由注册（header-only）。
-// wire_route（网络层）→ engine_route（引擎 on_event 匹配），
-// engine_route 取 proto 注释 `route:...|...|wire|short` 的 short 字段。
+//
+// InstanceEvent::route 始终存 wire_route（不再有 engine_route alias），
+// 故 engine on_event 里的 BEAST_ENGINE_EVENT_PROTO_* 宏也用 wire_route 字符串匹配。
 inline void register_pixel_moba_routes(beast::platform::plugin::ServerContext& ctx) {
     namespace bp = beast::platform::plugin;
 
     // heroselect：选英雄。
-    bp::register_instance_route<HeroSelectCmd>(ctx, "pixelmoba.heroselect", "hero_select");
+    bp::register_instance_route<HeroSelectCmd>(ctx, "pixelmoba.heroselect");
     // ping：局内 RTT + tick 同步，引擎回 PongNotify（带 server tick）。
-    bp::register_instance_route<PingCmd>(ctx, "pixelmoba.ping", "ping");
+    bp::register_instance_route<PingCmd>(ctx, "pixelmoba.ping");
     // loadcomplete：客户端加载完成通知。
-    bp::register_instance_route<LoadCompleteCmd>(ctx, "pixelmoba.loadcomplete", "load_complete");
+    bp::register_instance_route<LoadCompleteCmd>(ctx, "pixelmoba.loadcomplete");
     // move：移动输入。
-    bp::register_instance_route<MoveCmd>(ctx, "pixelmoba.move", "move");
+    bp::register_instance_route<MoveCmd>(ctx, "pixelmoba.move");
     // cast：释放技能。
-    bp::register_instance_route<CastCmd>(ctx, "pixelmoba.cast", "cast");
+    bp::register_instance_route<CastCmd>(ctx, "pixelmoba.cast");
     // attack：普通攻击(平A)。
-    bp::register_instance_route<AttackCmd>(ctx, "pixelmoba.attack", "attack");
+    bp::register_instance_route<AttackCmd>(ctx, "pixelmoba.attack");
     // buy：购买装备。
-    bp::register_instance_route<BuyItemCmd>(ctx, "pixelmoba.buy", "buy");
+    bp::register_instance_route<BuyItemCmd>(ctx, "pixelmoba.buy");
     // sell：出售装备。
-    bp::register_instance_route<SellItemCmd>(ctx, "pixelmoba.sell", "sell");
+    bp::register_instance_route<SellItemCmd>(ctx, "pixelmoba.sell");
     // levelupskill：升级技能。
-    bp::register_instance_route<LevelUpSkillCmd>(ctx, "pixelmoba.levelupskill", "level_up_skill");
+    bp::register_instance_route<LevelUpSkillCmd>(ctx, "pixelmoba.levelupskill");
     // reconnect：断线重连,客户端请求全量快照。
-    bp::register_instance_route<ReconnectCmd>(ctx, "pixelmoba.reconnect", "reconnect");
+    bp::register_instance_route<ReconnectCmd>(ctx, "pixelmoba.reconnect");
 }
 
 } // namespace beast::moba::pixel

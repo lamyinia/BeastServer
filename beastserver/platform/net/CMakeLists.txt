@@ -30,6 +30,7 @@ beast_add_gtest(net_unreliable_frame SOURCES tests/unreliable_frame_test.cpp DEP
 beast_add_gtest(net_kcp_crypto SOURCES tests/kcp_crypto_test.cpp DEPS beast_net)
 beast_add_gtest(net_kcp_crypto_loopback SOURCES tests/kcp_crypto_loopback_test.cpp DEPS beast_net)
 beast_add_gtest(net_kcp_bypass_crypto_loopback SOURCES tests/kcp_bypass_crypto_loopback_test.cpp DEPS beast_net)
+beast_add_gtest(net_dtls_loopback SOURCES tests/dtls_loopback_test.cpp DEPS beast_net)
 beast_add_gtest(net_session_instance SOURCES tests/session_instance_test.cpp DEPS beast_net)
 beast_add_gtest(net_session_concurrent SOURCES tests/session_manager_concurrent_test.cpp DEPS beast_net)
 beast_add_gtest(net_auth_verifier SOURCES tests/auth_verifier_test.cpp DEPS beast_net)

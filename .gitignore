@@ -55,3 +55,6 @@ tools/biz_export/biz_export
 .svn/
 
 **/server.json
+
+# Backup files (may contain secrets, never commit)
+*.bak

@@ -24,6 +24,8 @@ KcpServer::KcpServer(
     router_ = std::make_shared<dispatch::Router>();
     // SessionManager 同时持有 TcpPipelineOptions + KcpPipelineOptions；
     // KCP 专属参数（conv/snd_wnd 等）由 KcpTransport 消费，pipeline 层只用 max_frame_bytes。
+    // DTLS 模式下强制 crypto.enabled=false（由 validate_server_config 保证），
+    // 这里 KcpPipelineOptions.crypto.enabled 也会是 false，不安装 KcpCryptoHandler。
     session_manager_ = std::make_shared<session::SessionManager>(
         ioc.get_executor(),
         router_,
@@ -76,6 +78,21 @@ std::uint16_t KcpServer::listen_port() const {
 }
 
 void KcpServer::start() {
+    // DTLS 模式：构建共享 ssl::context（所有 peer 复用）
+    if (config_.dtls.enabled) {
+        dtls_context_ = transport::DtlsTransport::build_dtls_context(
+            config_.dtls.cert_path,
+            config_.dtls.key_path,
+            config_.dtls.min_version,
+            config_.dtls.cipher_list);
+        if (!dtls_context_) {
+            BEAST_LOG_ERROR("KcpServer: failed to build DTLS context, abort start");
+            return;
+        }
+        BEAST_LOG_INFO("KcpServer: DTLS mode enabled, cert={}, min_version={}",
+                       config_.dtls.cert_path, config_.dtls.min_version);
+    }
+
     const boost::asio::ip::udp::endpoint endpoint(boost::asio::ip::udp::v4(), config_.port);
 
     listener_ = std::make_unique<listener::UdpListener>(io_context(), endpoint);
@@ -91,7 +108,8 @@ void KcpServer::start() {
     if (own_io_runner_) {
         own_io_runner_->start();
     }
-    BEAST_LOG_INFO("KcpServer listening on port {}", listen_port());
+    BEAST_LOG_INFO("KcpServer listening on port {} (mode: {})",
+                   listen_port(), config_.dtls.enabled ? "DTLS" : "plaintext");
 }
 
 void KcpServer::stop() {
@@ -117,23 +135,24 @@ void KcpServer::on_new_peer(const boost::asio::ip::udp::endpoint& peer, std::vec
         return;
     }
 
+    if (config_.dtls.enabled && dtls_context_) {
+        on_new_peer_dtls(peer, std::move(first_packet), strand, socket);
+    } else {
+        on_new_peer_plaintext(peer, std::move(first_packet), strand, socket);
+    }
+}
+
+void KcpServer::on_new_peer_plaintext(
+    const boost::asio::ip::udp::endpoint& peer,
+    std::vector<std::uint8_t>&& first_packet,
+    boost::asio::strand<boost::asio::any_io_executor>& strand,
+    boost::asio::ip::udp::socket& socket) {
     auto transport = std::make_shared<transport::KcpTransport>(
         std::move(socket), strand, transport::KcpTransportConfig::from_kcp_config(config_));
     transport->set_remote_endpoint(peer);
 
     auto channel = std::make_shared<channel::KcpChannel>(transport);
-
-    // 旁路接收：route_reliability_ + config_.unreliable.enabled 双条件满足时创建 per-channel UnreliableReceiver，
-    // wire 到 KcpChannel::on_unreliable_bytes_。transport demux 后的旁路帧经 receiver
-    // decode + reverse-lookup + latest-wins 过滤后 feed 到 pipeline（与可靠路径同 strand）。
-    if (route_reliability_ && config_.unreliable.enabled) {
-        auto receiver = std::make_shared<outbound::UnreliableReceiver>(route_reliability_);
-        auto* pipeline_ptr = &channel->pipeline();
-        channel->set_on_unreliable_bytes(
-            [receiver, pipeline_ptr](channel::IChannel::Bytes&& data) {
-                receiver->process(std::move(data), *pipeline_ptr);
-            });
-    }
+    install_unreliable_receiver(channel, transport);
 
     // 注册后续数据注入：UdpListener 收到该 peer 的包时转发给 transport。
     auto transport_weak = std::weak_ptr<transport::KcpTransport>(transport);
@@ -157,6 +176,113 @@ void KcpServer::on_new_peer(const boost::asio::ip::udp::endpoint& peer, std::vec
     // 否则首包会被丢弃导致 auth 永不触发。
     session_manager_->on_new_connection(channel);
     transport->inject_inbound(first_packet);
+}
+
+void KcpServer::on_new_peer_dtls(
+    const boost::asio::ip::udp::endpoint& peer,
+    std::vector<std::uint8_t>&& first_packet,
+    boost::asio::strand<boost::asio::any_io_executor>& strand,
+    boost::asio::ip::udp::socket& socket) {
+    // DtlsTransport 拥有 UDP socket，负责 DTLS 握手与加解密。
+    auto dtls_transport = std::make_shared<transport::DtlsTransport>(
+        std::move(socket), strand, dtls_context_, config_.dtls.handshake_timeout_seconds);
+    dtls_transport->set_remote_endpoint(peer);
+
+    // KcpTransport 退化为协议层：socket_ 默认构造（未打开），
+    // 入站走 inject_inbound（由 DtlsTransport 解密后回调），
+    // 出站走 udp_output_replacer_（重定向到 DtlsTransport::encrypt_and_send）。
+    boost::asio::ip::udp::socket closed_socket(io_context());  // default-constructed = closed
+    auto kcp_transport = std::make_shared<transport::KcpTransport>(
+        std::move(closed_socket), strand, transport::KcpTransportConfig::from_kcp_config(config_));
+    kcp_transport->set_remote_endpoint(peer);
+
+    // 双向 wire，使用 weak_ptr 避免循环引用：
+    //   - KcpTransport 出站 → DtlsTransport::encrypt_and_send
+    //   - DtlsTransport 解密 → KcpTransport::inject_inbound
+    auto dtls_weak = std::weak_ptr<transport::DtlsTransport>(dtls_transport);
+    auto kcp_weak = std::weak_ptr<transport::KcpTransport>(kcp_transport);
+
+    kcp_transport->set_udp_output_replacer(
+        [dtls_weak](transport::KcpTransport::Bytes&& data) {
+            if (auto dtls = dtls_weak.lock()) {
+                dtls->encrypt_and_send(std::move(data));
+            }
+        });
+
+    dtls_transport->set_on_decrypted(
+        [kcp_weak](transport::DtlsTransport::Bytes&& data) {
+            if (auto kcp = kcp_weak.lock()) {
+                kcp->inject_inbound(data);
+            }
+        });
+
+    auto channel = std::make_shared<channel::KcpChannel>(kcp_transport);
+    install_unreliable_receiver(channel, kcp_transport);
+
+    // UdpListener 路由：包进 DtlsTransport（不是 KcpTransport）做 DTLS 解密。
+    auto dtls_weak_for_route = std::weak_ptr<transport::DtlsTransport>(dtls_transport);
+    listener_->route(peer, [dtls_weak_for_route](const std::vector<std::uint8_t>& data) {
+        if (auto dtls = dtls_weak_for_route.lock()) {
+            // inject_inbound(Bytes&&) 需要可变缓冲；这里复制后 move。
+            transport::DtlsTransport::Bytes copy = data;
+            dtls->inject_inbound(std::move(copy));
+        }
+    });
+
+    // 通道失活：注销路由 + 关闭 DtlsTransport。
+    // lambda 捕获 strong ref 保持 DtlsTransport/KcpTransport 存活到 channel 完全 inactive。
+    const auto listener_raw = listener_.get();
+    auto dtls_strong = dtls_transport;
+    auto kcp_strong = kcp_transport;
+    channel->set_on_inactive([listener_raw, peer, dtls_strong, kcp_strong]() {
+        if (listener_raw) {
+            listener_raw->unroute(peer);
+        }
+        dtls_strong->close();
+        // kcp_strong 由 KcpChannel 析构时关闭
+    });
+
+    // DtlsTransport 关闭时（握手失败/对端关闭/错误）→ 触发 channel 关闭
+    auto channel_weak = std::weak_ptr<channel::KcpChannel>(channel);
+    dtls_transport->set_on_closed(
+        [channel_weak](const std::string& /*reason*/) {
+            if (auto ch = channel_weak.lock()) {
+                ch->close();
+            }
+        });
+
+    // 顺序关键：先 on_new_connection（同步安装 pipeline + channel->start_read()
+    // → transport->start() 经 post 投递到 strand），再 async_handshake（同样 post 到 strand），
+    // 最后 inject_inbound（ClientHello）。
+    // FIFO 保证：transport.start 先执行（on_bytes_ 就绪），再握手，再喂首包。
+    // 握手成功后解密的数据才能被 KcpTransport 正确处理。
+    session_manager_->on_new_connection(channel);
+
+    dtls_transport->async_handshake(
+        []() {
+            BEAST_LOG_INFO("KcpServer DTLS handshake success");
+        },
+        [](const std::string& err) {
+            BEAST_LOG_WARN("KcpServer DTLS handshake failed: {}", err);
+        });
+
+    // 喂入首包（ClientHello）启动握手
+    transport::DtlsTransport::Bytes first_copy = std::move(first_packet);
+    dtls_transport->inject_inbound(std::move(first_copy));
+}
+
+void KcpServer::install_unreliable_receiver(
+    const std::shared_ptr<channel::KcpChannel>& channel,
+    const std::shared_ptr<transport::KcpTransport>& /*transport*/) {
+    if (!route_reliability_ || !config_.unreliable.enabled) {
+        return;
+    }
+    auto receiver = std::make_shared<outbound::UnreliableReceiver>(route_reliability_);
+    auto* pipeline_ptr = &channel->pipeline();
+    channel->set_on_unreliable_bytes(
+        [receiver, pipeline_ptr](channel::IChannel::Bytes&& data) {
+            receiver->process(std::move(data), *pipeline_ptr);
+        });
 }
 
 } // namespace beast::platform::net::server

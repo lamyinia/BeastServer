@@ -56,6 +56,25 @@ struct KcpCryptoConfig {
     [[nodiscard]] bool enabled() const noexcept { return mode != KcpCryptoMode::None; }
 };
 
+/// KCP DTLS 配置（server.json net.kcp.dtls）。
+/// 启用后在 UDP socket 上做 DTLS 握手，提供标准 TLS 级别的安全保证：
+///   - 防 MITM（证书信任链）
+///   - 防被动监听解密（ECDHE 前向安全）
+///   - 包完整性 + 防重放
+///
+/// 与 kcp.crypto 互斥：DTLS 已提供 AEAD，应用层 PSK 加密冗余。
+/// 启用 DTLS 时，crypto.mode 必须为 none（由 validate_server_config 强制）。
+///
+/// 证书复用：与 tcp.tls 共用同一份 CA 签发的服务端证书（cert_path/key_path 可指向同一文件）。
+struct KcpDtlsConfig {
+    bool enabled{false};                       // 总开关
+    std::string cert_path;                      // 服务端证书 PEM（必填当 enabled=true）
+    std::string key_path;                       // 服务端私钥 PEM（必填当 enabled=true）
+    std::string min_version{"DTLSv1.2"};        // 最低 DTLS 版本：DTLSv1.2 / DTLSv1.3
+    std::string cipher_list;                    // 留空用 OpenSSL 默认 cipher suite
+    std::uint32_t handshake_timeout_seconds{5}; // 握手超时，超时未完成则关闭连接
+};
+
 /// KCP over UDP 配置。字段对应 ikcp 协议参数（接入 ikcp 后由 KcpTransport 消费）。
 /// conv=0 表示由握手协商；预热阶段协议参数未实际生效。
 struct KcpConfig {
@@ -70,7 +89,8 @@ struct KcpConfig {
     std::uint32_t resend{2};          // 快速重传阈值
     std::uint32_t nc{1};              // 1 = 关闭拥塞控制
     UnreliableConfig unreliable;      // 旁路不可靠子通道配置
-    KcpCryptoConfig crypto;           // 应用层加密配置
+    KcpCryptoConfig crypto;           // 应用层 PSK 加密配置（与 dtls 互斥）
+    KcpDtlsConfig dtls;               // DTLS 加密配置（与 crypto 互斥）
 
     [[nodiscard]] bool enabled() const noexcept { return port > 0; }
 };
@@ -141,6 +161,42 @@ struct MongoConfig {
     std::string password;
     std::uint32_t thread_count{4};
     std::uint32_t queue_max_size{1000};
+};
+
+/// MySQL 配置（server.json mysql）。
+/// 供 DirtyPersistService 的 mysql 后端使用，mysql-connector-cpp 的连接池消费。
+struct MysqlConfig {
+    std::string host{"127.0.0.1"};
+    std::uint16_t port{3306};
+    std::string database{"beastserver"};
+    std::string username;
+    std::string password;
+    std::uint32_t min_pool_size{4};
+    std::uint32_t max_pool_size{32};
+    std::uint32_t connect_timeout_ms{3000};
+    std::uint32_t read_timeout_ms{5000};
+};
+
+/// DirtyPersist 配置（server.json dirtypersist）。
+/// 控制"字段级 dirty tracking + debounce 落盘"模式的调度参数与后端选择。
+///
+/// 设计要点：
+/// - backend 选 "mongo" 或 "mysql"，对应 ServerConfig::mongodb / mysql 两个配置块。
+///   避免后端字段散落，dirtypersist 自己只放调度参数。
+/// - flush_delay_ms 是 debounce 延迟：mark_dirty 触发后等待 N ms 再批量 flush。
+///   无 dirty 时 timer 处于 stopped 状态，io_context 不唤醒，零 CPU 占用。
+/// - queue_max_size 是 dirty 队列上限，超限直接 reject（不阻塞调用线程）。
+/// - thread_count 是阻塞 I/O worker 数（db_pool_），mongocxx/mysql-connector 都是同步 API。
+struct DirtyPersistConfig {
+    bool enabled{false};
+    std::string backend{"mongo"};            // "mongo" | "mysql"
+    std::uint32_t flush_delay_ms{100};        // debounce 延迟，0 表示 mark_dirty 立即 flush
+    std::uint32_t queue_max_size{1000};       // dirty 队列上限
+    std::uint32_t thread_count{4};            // 阻塞 I/O worker 数
+    std::uint32_t max_batch_size{128};        // 单次 flush 最多 batch 数
+
+    [[nodiscard]] bool is_mongo_backend() const noexcept { return backend == "mongo"; }
+    [[nodiscard]] bool is_mysql_backend() const noexcept { return backend == "mysql"; }
 };
 
 struct EventActorConfig {
@@ -275,12 +331,14 @@ struct ServerConfig {
     EtcdConfig etcd;
     GrpcConfig grpc;
     MongoConfig mongodb;
+    MysqlConfig mysql;
     RuntimeConfig runtime;
     DebugConfig debug;
     AuthConfig auth;
     PluginsConfig plugins;
     BizConfigSettings bizconfig;
     AiConfigSettings ai;
+    DirtyPersistConfig dirtypersist;
 };
 
 void finalize_server_config(ServerConfig& config);

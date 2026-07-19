@@ -25,7 +25,7 @@ BEAST_PLUGIN_EXPORT void beast_plugin_init(beast::platform::plugin::ServerContex
 
     // 局内路由：解析 proto → 转引擎 payload → submit_event
     beast::platform::plugin::register_instance_route<MyRequest>(
-        ctx, "game.action", "engine_action", to_engine_payload);
+        ctx, "game.action", to_engine_payload);
 }
 ```
 

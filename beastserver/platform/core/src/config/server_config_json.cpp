@@ -64,6 +64,15 @@ void parse_kcp(const nlohmann::json& kcp, KcpConfig& out) {
             }
         }
     }
+    if (kcp.contains("dtls") && kcp.at("dtls").is_object()) {
+        const auto& d = kcp.at("dtls");
+        assign_if_present(d, "enabled", out.dtls.enabled);
+        assign_if_present(d, "cert_path", out.dtls.cert_path);
+        assign_if_present(d, "key_path", out.dtls.key_path);
+        assign_if_present(d, "min_version", out.dtls.min_version);
+        assign_if_present(d, "cipher_list", out.dtls.cipher_list);
+        assign_if_present(d, "handshake_timeout_seconds", out.dtls.handshake_timeout_seconds);
+    }
 }
 
 void parse_websocket(const nlohmann::json& ws, WebsocketConfig& out) {
@@ -108,6 +117,27 @@ void parse_mongo(const nlohmann::json& mongodb, MongoConfig& out) {
     assign_if_present(mongodb, "password", out.password);
     assign_if_present(mongodb, "thread_count", out.thread_count);
     assign_if_present(mongodb, "queue_max_size", out.queue_max_size);
+}
+
+void parse_mysql(const nlohmann::json& mysql, MysqlConfig& out) {
+    assign_if_present(mysql, "host", out.host);
+    assign_if_present(mysql, "port", out.port);
+    assign_if_present(mysql, "database", out.database);
+    assign_if_present(mysql, "username", out.username);
+    assign_if_present(mysql, "password", out.password);
+    assign_if_present(mysql, "min_pool_size", out.min_pool_size);
+    assign_if_present(mysql, "max_pool_size", out.max_pool_size);
+    assign_if_present(mysql, "connect_timeout_ms", out.connect_timeout_ms);
+    assign_if_present(mysql, "read_timeout_ms", out.read_timeout_ms);
+}
+
+void parse_dirtypersist(const nlohmann::json& dp, DirtyPersistConfig& out) {
+    assign_if_present(dp, "enabled", out.enabled);
+    assign_if_present(dp, "backend", out.backend);
+    assign_if_present(dp, "flush_delay_ms", out.flush_delay_ms);
+    assign_if_present(dp, "queue_max_size", out.queue_max_size);
+    assign_if_present(dp, "thread_count", out.thread_count);
+    assign_if_present(dp, "max_batch_size", out.max_batch_size);
 }
 
 void parse_runtime(const nlohmann::json& server, RuntimeConfig& out) {
@@ -335,6 +365,12 @@ ServerConfig parse_server_node(const nlohmann::json& server) {
     if (server.contains("mongodb")) {
         parse_mongo(server.at("mongodb"), config.mongodb);
     }
+    if (server.contains("mysql")) {
+        parse_mysql(server.at("mysql"), config.mysql);
+    }
+    if (server.contains("dirtypersist")) {
+        parse_dirtypersist(server.at("dirtypersist"), config.dirtypersist);
+    }
     if (server.contains("debug")) {
         assign_if_present(server.at("debug"), "enabled", config.debug.enabled);
     }
@@ -411,13 +447,31 @@ std::optional<std::string> validate_server_config(const ServerConfig& config) {
         }
     }
 
+    // KCP DTLS 校验
+    if (config.net.kcp.dtls.enabled) {
+        if (config.net.kcp.dtls.cert_path.empty()) {
+            return "kcp.dtls.enabled=true requires kcp.dtls.cert_path";
+        }
+        if (config.net.kcp.dtls.key_path.empty()) {
+            return "kcp.dtls.enabled=true requires kcp.dtls.key_path";
+        }
+        const auto& dv = config.net.kcp.dtls.min_version;
+        if (dv != "DTLSv1.2" && dv != "DTLSv1.3") {
+            return std::string("kcp.dtls.min_version must be \"DTLSv1.2\" or \"DTLSv1.3\", got: ") + dv;
+        }
+        // DTLS 与 crypto 互斥：DTLS 已提供 AEAD，应用层 PSK 加密冗余
+        if (config.net.kcp.crypto.enabled()) {
+            return "kcp.dtls.enabled=true conflicts with kcp.crypto.mode!=none (DTLS already provides AEAD)";
+        }
+    }
+
     // 生产环境强制加密：debug.enabled=false 时，启用的传输层必须开启加密
     if (!config.debug.enabled) {
         if (config.net.tcp.port > 0 && !config.net.tcp.tls.enabled) {
             return "tcp.tls.enabled must be true in production (debug.enabled=false)";
         }
-        if (config.net.kcp.enabled() && !config.net.kcp.crypto.enabled()) {
-            return "kcp.crypto.mode must not be \"none\" in production (debug.enabled=false)";
+        if (config.net.kcp.enabled() && !config.net.kcp.crypto.enabled() && !config.net.kcp.dtls.enabled) {
+            return "kcp must enable crypto.mode!=none or dtls.enabled=true in production (debug.enabled=false)";
         }
         // WebSocket 生产环境必须配置 Origin 白名单（防 CSRF）
         if (config.net.websocket.enabled() && config.net.websocket.allowed_origins.empty()) {

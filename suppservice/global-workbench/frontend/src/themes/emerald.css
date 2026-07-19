@@ -1,0 +1,61 @@
+/* ============================================================================
+ * 翡翠秘境（Emerald）
+ * ----------------------------------------------------------------------------
+ * 配色：深翠绿黑底 + 翡翠绿强调 + 苔藓绿银
+ * 字体：Cormorant Garamond（优雅衬线，自然精灵感）
+ * 视觉感：林中精灵 / 翡翠秘境 / 自然圣堂
+ * ============================================================================ */
+
+body.theme-emerald {
+  /* === 配色 token === */
+  --bg-primary:    #0a1f0e;  /* 深翠绿黑 - 主背景 */
+  --bg-secondary:  #112d18;  /* 暗翠绿 - 次背景 */
+  --bg-card:       #163a20;  /* 微亮翠绿 - 卡片 */
+  --bg-elevated:   #1d4528;  /* 高亮翠绿 - 悬浮/hover */
+  --bg-inset:      #06120a;  /* 内嵌暗绿 - 输入框/pre */
+  --border-main:   #4a7c59;  /* 苔藓绿银 - 主边框 */
+  --border-strong: #87ceeb;  /* 翡翠金光 - 强调边框 */
+  --border-soft:   #1f3d28;  /* 弱翠绿 - 弱边框 */
+  --accent:        #50c878;  /* 翡翠绿 - 主强调 */
+  --accent-hover:  #6ee094;  /* 翡翠绿 hover */
+  --accent-deep:    #2e8b57;  /* 深翡翠（按钮底色） */
+  --accent-glow:   rgba(80, 200, 120, 0.4);
+  --success:       #a8d44a;  /* 嫩芽黄绿 - 成功 */
+  --success-deep:   #6b8e23;
+  --success-glow:  rgba(168, 212, 74, 0.5);
+  --error:         #ff6347;  /* 番茄红 - 错误 */
+  --error-deep:    #cd3700;
+  --error-glow:    rgba(255, 99, 71, 0.5);
+  --warn:          #ffd700;  /* 金色 */
+  --info:          #98fb98;  /* 苍翠绿 - 信息/链接 */
+  --text-main:     #e0f0e0;  /* 雾翠白 - 主文字 */
+  --text-muted:    #a8d8b0;  /* 翠银 - 次文字 */
+  --text-faint:    #5a8a6a;  /* 暗翠银 - 弱文字 */
+
+  /* === 按钮文字色 === */
+  --btn-text:          #0a1f0e;  /* 主按钮文字（翡翠绿底深字） */
+  --btn-success-text:  #0a1f0e;  /* success 按钮文字（嫩芽绿底深字） */
+
+  /* === 字体 token === */
+  --font-display: 'Cormorant Garamond', 'Trajan Pro', 'Times New Roman', serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    'Cascadia Mono', 'JetBrains Mono', 'Fira Code', Consolas, ui-monospace, monospace;
+
+  /* === 尺寸 token === */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --shadow-glow:    0 0 12px var(--accent-glow);
+  --shadow-success: 0 0 8px var(--success-glow);
+  --shadow-error:   0 0 8px var(--error-glow);
+
+  /* === 装饰背景（翡翠光晕从顶部） === */
+  --bg-decoration:
+    radial-gradient(ellipse at top, rgba(80, 200, 120, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse at bottom, rgba(168, 212, 74, 0.05) 0%, transparent 50%);
+}
+
+body.theme-emerald {
+  background-image: var(--bg-decoration);
+  background-attachment: fixed;
+}

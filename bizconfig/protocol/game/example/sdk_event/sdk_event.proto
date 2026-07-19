@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package beast.demo;
+
+// sdk_event 玩法协议：客户端 SDK 协议栈联调用，覆盖 echo/seq/bytes/big 四类边界。
+// 与 demo_event（只 string 回显）的区别：sdk_event 专门测 SDK 的 client_seq 配对、
+// bytes 二进制透传、大消息边界场景。
+//
+// v1 仅含 Echo 4 件套，后续可扩展 notify/broadcast/error/reconn/ratelimit/slow 等。
+
+// === 1) 基本 string echo ===
+// route:EchoRequest|c2s|sdk.echo
+message EchoRequest {
+  string text = 1;
+}
+
+// route:EchoResponse|s2c|sdk.echo.resp
+message EchoResponse {
+  string text = 1;
+}
+
+// === 2) client_seq 透传 ===
+// route:SeqEchoRequest|c2s|sdk.echo.seq
+message SeqEchoRequest {
+  string text = 1;
+}
+
+// route:SeqEchoResponse|s2c_resp|sdk.echo.seq.resp
+message SeqEchoResponse {
+  uint64 client_seq = 1;
+  string text = 2;
+}
+
+// === 3) bytes payload 透传（验证二进制不破坏）===
+// route:BytesEchoRequest|c2s|sdk.echo.bytes
+message BytesEchoRequest {
+  bytes payload = 1;
+}
+
+// route:BytesEchoResponse|s2c|sdk.echo.bytes.resp
+message BytesEchoResponse {
+  bytes payload = 1;
+}
+
+// === 4) 大消息 echo（验证 frame 边界）===
+// route:BigEchoRequest|c2s|sdk.echo.big
+message BigEchoRequest {
+  uint32 size = 1;
+}
+
+// route:BigEchoResponse|s2c|sdk.echo.big.resp
+message BigEchoResponse {
+  bytes payload = 1;
+  uint32 size = 2;
+}
+
+// === 5) Transport 调度测试（走 engine，验证 OutboundHub preference 调度）===
+// 客户端可在同一 Session 上同时建立 TCP/KCP/WebSocket 多个 channel，
+// 然后发 sdk.transport.info { preference: "prefer_kcp" } 让服务端按指定 preference
+// 调度回包。客户端观察实际从哪个 channel 收到 resp，验证跨 channel 调度生效。
+//
+// 场景：客户端同时连 TCP+KCP+WS 后，在 TCP channel 发 preference="prefer_kcp"，
+//      服务端用 PreferKcp 调度 → 客户端应在 KCP channel 上收到 resp。
+//
+// preference 取值（对应 ProtocolPreference 枚举）：
+//   "" / "any"            -> Any          (任选 active channel)
+//   "prefer_tcp"          -> PreferTcp    (优先 TCP，无可用 fallback 到 Any)
+//   "prefer_kcp"          -> PreferKcp    (优先 KCP，无可用 fallback)
+//   "prefer_websocket"    -> PreferWebsocket
+//   "only_tcp"            -> TcpOnly      (严格 TCP，无可用时 NoChannel 不发)
+//   "only_kcp"            -> KcpOnly      (严格 KCP)
+//   "only_websocket"      -> WebsocketOnly
+// route:TransportInfoRequest|c2s|sdk.transport.info
+message TransportInfoRequest {
+  string preference = 1;  // 服务端回包走哪个 transport；空或未知值视为 Any
+}
+
+// route:TransportInfoResponse|s2c_resp|sdk.transport.info.resp
+message TransportInfoResponse {
+  string requested_preference = 1;  // 回显客户端请求的 preference（debug 用）
+  string player_id = 2;             // 已 auth 的 player_id
+}

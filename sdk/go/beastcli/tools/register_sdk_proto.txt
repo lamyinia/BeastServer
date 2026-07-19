@@ -1,0 +1,25 @@
+﻿# register_sdk_proto.txt
+# 每行一个 .proto 相对路径（相对 d:/git-project/BeastServer-project/bizconfig/protocol/）
+# 空行和 # 开头的注释行被忽略
+#
+# 重定向语法（2026-07-20 加）：path/to/foo.proto => biz/foo/
+#   .pb.go 生成到 beastcli/proto/biz/foo/，M 选项用 beastserver-project/sdk/go/beastcli/proto/biz/foo
+#   没重定向：按 .proto 相对路径生成（platform/envelope.proto -> beastcli/proto/platform/envelope.pb.go）
+#
+# sync_sdk_go.ps1 会读这个文件，调 protoc 生成 .pb.go + _grpc.pb.go 到 ../sdk/go/beastcli/proto/
+#
+# Go SDK 真相源：sdk/go/beastcli/（唯一 Go module，跟 sdk/native/ + sdk/godot/ 平级）
+# 工作台 suppservice/global-workbench/ 通过 go.mod replace 引用本 module
+#
+# 约束（2026-07-20 重定）：
+#   - beastcli/proto/platform/ 平台层 proto（envelope/auth/room）
+#   - beastcli/proto/biz/<玩法>/ 玩法相关 proto（sdk_event、pixel_moba/ping 等）
+#     业务 proto 通过 => 重定向到 biz/ 下生成
+
+# 平台层
+platform/envelope.proto
+platform/auth.proto
+platform/room.proto
+
+# 玩法层：sdk_event（BeastClient SendRequest 用，5 个 message DTO）
+game/example/sdk_event/sdk_event.proto => biz/sdk_event/

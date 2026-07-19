@@ -13,22 +13,17 @@ BEAST_PLUGIN_EXPORT void beast_plugin_init(beast::platform::plugin::ServerContex
 
     beast::platform::plugin::register_instance_route<beast::demo::PingRequest1>(
         ctx,
-        "demo.event.ping1",
-        "ping1");
+        "demo.event.ping1");
     beast::platform::plugin::register_instance_route<beast::demo::PingRequest2>(
         ctx,
-        "demo.event.ping2",
-        "ping2");
+        "demo.event.ping2");
     beast::platform::plugin::register_instance_route<beast::demo::PingRequest3>(
         ctx,
-        "demo.event.ping3",
-        "ping3");
+        "demo.event.ping3");
     beast::platform::plugin::register_instance_route<beast::demo::PingRequest4>(
         ctx,
-        "demo.event.ping4",
-        "ping4");
+        "demo.event.ping4");
     beast::platform::plugin::register_instance_route<beast::demo::PingRequest5>(
         ctx,
-        "demo.event.ping5",
-        "ping5");
+        "demo.event.ping5");
 }

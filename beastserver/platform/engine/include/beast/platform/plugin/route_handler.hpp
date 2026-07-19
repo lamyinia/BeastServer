@@ -74,19 +74,20 @@ void register_parsed_route(
 // 注意：handler 长期存放在 Router，必须捕获 instance_manager 原始指针（GameServer 持有，
 // 与 Router 同生命周期），而非 ServerContext 引用——后者是 invoke_plugin 的栈对象，
 // 函数返回即析构，会留下悬空引用。
+//
+// InstanceEvent::route 字段始终存 wire_route（不再有 engine_route alias），
+// engine on_event 里的 BEAST_ENGINE_EVENT_PROTO_* 宏也用 wire_route 字符串匹配。
 inline void register_instance_route(
     ServerContext& ctx,
-    RouteId wire_route,
-    RouteId engine_route = {}) {
-    const RouteId resolved_engine_route = engine_route.empty() ? wire_route : engine_route;
+    RouteId wire_route) {
     auto* instance_manager = ctx.instance_manager_ptr();
     ctx.register_route(
         wire_route,
-        [instance_manager, resolved_engine_route](
+        [instance_manager, wire_route](
             net::channel::ChannelHandlerContext& ch_ctx,
             const net::channel::MessagePtr& msg) {
             (void)ServerContext::submit_instance_event(
-                instance_manager, ch_ctx, msg, resolved_engine_route, msg->payload);
+                instance_manager, ch_ctx, msg, wire_route, msg->payload);
         });
 }
 
@@ -95,13 +96,11 @@ template<typename RequestT, typename PayloadFn>
 void register_instance_route(
     ServerContext& ctx,
     RouteId wire_route,
-    RouteId engine_route,
     PayloadFn&& make_payload) {
     auto* instance_manager = ctx.instance_manager_ptr();
     ctx.register_route(
         wire_route,
         [instance_manager,
-         engine_route,
          wire_route,
          make_payload = std::forward<PayloadFn>(make_payload)](
             net::channel::ChannelHandlerContext& ch_ctx,
@@ -113,21 +112,18 @@ void register_instance_route(
 
             std::vector<std::uint8_t> payload = make_payload(request);
             (void)ServerContext::submit_instance_event(
-                instance_manager, ch_ctx, msg, engine_route, std::move(payload));
+                instance_manager, ch_ctx, msg, wire_route, std::move(payload));
         });
 }
 
-// 同上；payload 默认为 RequestT::SerializeAsString()，engine_route 省略时与 wire_route 相同。
+// 同上；payload 默认为 RequestT::SerializeAsString()。
 template<typename RequestT>
 void register_instance_route(
     ServerContext& ctx,
-    RouteId wire_route,
-    RouteId engine_route = {}) {
-    const RouteId resolved_engine_route = engine_route.empty() ? wire_route : engine_route;
+    RouteId wire_route) {
     register_instance_route<RequestT>(
         ctx,
         wire_route,
-        resolved_engine_route,
         [](const RequestT& request) {
             const auto bytes = request.SerializeAsString();
             return std::vector<std::uint8_t>(bytes.begin(), bytes.end());

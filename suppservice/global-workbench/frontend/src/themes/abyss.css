@@ -1,0 +1,61 @@
+/* ============================================================================
+ * 深渊海妖（Abyss）
+ * ----------------------------------------------------------------------------
+ * 配色：深海蓝黑底 + 珊瑚粉强调 + 海雾青
+ * 字体：Cinzel（与 dragonborn 共用，已加载则不重复）
+ * 视觉感：海洋深渊 / 海妖低语 / 深海秘宝
+ * ============================================================================ */
+
+body.theme-abyss {
+  /* === 配色 token === */
+  --bg-primary:    #001a2e;  /* 深海蓝黑 - 主背景 */
+  --bg-secondary:  #002744;  /* 暗海蓝 - 次背景 */
+  --bg-card:        #003355;  /* 微亮海蓝 - 卡片 */
+  --bg-elevated:    #004070;  /* 高亮海蓝 - 悬浮/hover */
+  --bg-inset:       #00111f;  /* 内嵌深海 - 输入框/pre */
+  --border-main:    #4a90a4;  /* 海雾银青 - 主边框 */
+  --border-strong:  #7fdbff;  /* 浅水蓝 - 强调边框 */
+  --border-soft:    #1a3d4a;  /* 弱海蓝 - 弱边框 */
+  --accent:         #ff6b9d;  /* 珊瑚粉 - 主强调 */
+  --accent-hover:   #ff8fb5;  /* 珊瑚粉 hover */
+  --accent-deep:     #cc4d7a;  /* 深珊瑚（按钮底色） */
+  --accent-glow:    rgba(255, 107, 157, 0.35);
+  --success:        #4ecdc4;  /* 海绿青 - 成功 */
+  --success-deep:    #26a69a;
+  --success-glow:   rgba(78, 205, 196, 0.5);
+  --error:          #ff4757;  /* 警示红 - 错误 */
+  --error-deep:     #c0392b;
+  --error-glow:     rgba(255, 71, 87, 0.5);
+  --warn:           #ffa502;  /* 海金沙 */
+  --info:           #70a1ff;  /* 海妖蓝紫 - 信息/链接 */
+  --text-main:      #d5f5f8;  /* 海雾白 - 主文字 */
+  --text-muted:     #a5d8e8;  /* 海雾青 - 次文字 */
+  --text-faint:     #5a8a9e;  /* 暗海青 - 弱文字 */
+
+  /* === 按钮文字色 === */
+  --btn-text:          #001a2e;  /* 主按钮文字（珊瑚粉底深字） */
+  --btn-success-text:  #001a2e;  /* success 按钮文字（海绿青底深字） */
+
+  /* === 字体 token === */
+  --font-display: 'Cinzel', 'Trajan Pro', 'Times New Roman', serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    'Cascadia Mono', 'JetBrains Mono', 'Fira Code', Consolas, ui-monospace, monospace;
+
+  /* === 尺寸 token === */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --shadow-glow:    0 0 12px var(--accent-glow);
+  --shadow-success: 0 0 8px var(--success-glow);
+  --shadow-error:   0 0 8px var(--error-glow);
+
+  /* === 装饰背景（浅水蓝光从顶部洒下） === */
+  --bg-decoration:
+    radial-gradient(ellipse at top, rgba(127, 219, 255, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse at bottom, rgba(255, 107, 157, 0.06) 0%, transparent 50%);
+}
+
+body.theme-abyss {
+  background-image: var(--bg-decoration);
+  background-attachment: fixed;
+}

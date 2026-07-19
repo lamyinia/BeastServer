@@ -1,0 +1,6 @@
+# protoc 生成产物（tools/sync_sdk_go.ps1 重新生成）
+/proto/
+
+# Go 测试缓存
+*.test
+*.out
