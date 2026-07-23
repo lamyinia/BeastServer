@@ -53,24 +53,26 @@ TCP 支持原生 TLS 终止。配置见 [配置参考](configuration.md#tcp)。
 }
 ```
 
-### KCP AEAD 加密
+### KCP DTLS 加密
 
-KCP 使用 PSK-AES-GCM 模式加密：
+KCP 使用 DTLS-over-UDP 加密（生产强制启用，是 KCP 唯一加密方案）：
 
 ```json
-"net.kcp.crypto": {
-  "mode": "psk_aes_gcm",
-  "tag_bytes": 16,
-  "encrypt_bypass": true
+"net.kcp.dtls": {
+  "enabled": true,
+  "cert_path": "/path/to/cert.pem",
+  "key_path": "/path/to/key.pem",
+  "min_version": "DTLSv1.2"
 }
 ```
 
-- `encrypt_bypass = true`：不可靠子通道不加密（高频数据允许明文，降低 CPU 开销）
-- `encrypt_bypass = false`：不可靠子通道也加密
+- DTLS 在 UDP 层加密所有 KCP 流量（ikcp 协议包 + 旁路不可靠帧），无需应用层加密
+- 复用 TCP TLS 的服务端证书（`cert_path`/`key_path` 可指向同一文件）
+- `debug.enabled=false`（生产）时必须 `dtls.enabled=true`
 
 ### 生产环境强制
 
-`debug.enabled = false` 时，TCP 必须启用 TLS，KCP 必须启用加密。
+`debug.enabled = false` 时，TCP 必须启用 TLS，KCP 必须启用 DTLS。
 
 ## WebSocket
 

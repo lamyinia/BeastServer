@@ -246,7 +246,8 @@ func buildTLSConfig(cfg Config) (*tls.Config, error) {
 	}
 
 	out := &tls.Config{
-		ServerName: serverName,
+		ServerName:         serverName,
+		InsecureSkipVerify: tlsCfg.InsecureSkipVerify,
 		// 服务端未设 ALPN，客户端可不发或发空列表
 		NextProtos: []string{},
 	}

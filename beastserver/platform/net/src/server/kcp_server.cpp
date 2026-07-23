@@ -24,8 +24,8 @@ KcpServer::KcpServer(
     router_ = std::make_shared<dispatch::Router>();
     // SessionManager 同时持有 TcpPipelineOptions + KcpPipelineOptions；
     // KCP 专属参数（conv/snd_wnd 等）由 KcpTransport 消费，pipeline 层只用 max_frame_bytes。
-    // DTLS 模式下强制 crypto.enabled=false（由 validate_server_config 保证），
-    // 这里 KcpPipelineOptions.crypto.enabled 也会是 false，不安装 KcpCryptoHandler。
+    // KCP 加密统一由 DTLS 在 UDP 层处理（生产环境强制 dtls.enabled=true），
+    // pipeline 层不再安装应用层加密 handler。
     session_manager_ = std::make_shared<session::SessionManager>(
         ioc.get_executor(),
         router_,
@@ -40,11 +40,6 @@ KcpServer::KcpServer(
             .interval = config_.interval,
             .resend = config_.resend,
             .nc = config_.nc,
-            .crypto = {
-                .enabled = config_.crypto.enabled(),
-                .tag_bytes = config_.crypto.tag_bytes,
-                .encrypt_bypass = config_.crypto.encrypt_bypass,
-            },
         },
         auth::make_auth_verifier(auth_config_));
     outbound_hub_ = std::make_shared<outbound::OutboundHub>(ioc, session_manager_);
@@ -95,7 +90,8 @@ void KcpServer::start() {
 
     const boost::asio::ip::udp::endpoint endpoint(boost::asio::ip::udp::v4(), config_.port);
 
-    listener_ = std::make_unique<listener::UdpListener>(io_context(), endpoint);
+    // UdpListener 用 shared_ptr（继承 enable_shared_from_this，send_to lambda 捕获 weak_ptr）。
+    listener_ = std::make_shared<listener::UdpListener>(io_context(), endpoint);
 
     // KcpServer 生命周期覆盖整个服务运行期，此处捕获 this 安全。
     // peer 通道失活时通过 set_on_inactive 注销 UdpListener 路由，避免野引用。
@@ -126,47 +122,50 @@ void KcpServer::on_new_peer(const boost::asio::ip::udp::endpoint& peer, std::vec
     BEAST_LOG_DEBUG("KcpServer new peer {}:{}", peer.address().to_string(), peer.port());
 
     auto strand = session::Session::make_strand(io_context().get_executor());
-    boost::asio::ip::udp::socket socket(io_context(), boost::asio::ip::udp::v4());
-    // 绑定本地临时端口；远端由 set_remote_endpoint 指定。
-    boost::system::error_code bind_ec;
-    socket.bind(boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), 0), bind_ec);
-    if (bind_ec) {
-        BEAST_LOG_ERROR("KcpServer peer socket bind failed: {}", bind_ec.message());
-        return;
-    }
+    // 不再为每个 peer 创建独立 socket：所有 peer 共享 listener_(8010) 的 socket。
+    // 出站包源端口 = 8010，客户端 connected socket 可正常接收。
 
     if (config_.dtls.enabled && dtls_context_) {
-        on_new_peer_dtls(peer, std::move(first_packet), strand, socket);
+        on_new_peer_dtls(peer, std::move(first_packet), strand);
     } else {
-        on_new_peer_plaintext(peer, std::move(first_packet), strand, socket);
+        on_new_peer_plaintext(peer, std::move(first_packet), strand);
     }
 }
 
 void KcpServer::on_new_peer_plaintext(
     const boost::asio::ip::udp::endpoint& peer,
     std::vector<std::uint8_t>&& first_packet,
-    boost::asio::strand<boost::asio::any_io_executor>& strand,
-    boost::asio::ip::udp::socket& socket) {
+    boost::asio::strand<boost::asio::any_io_executor>& strand) {
     auto transport = std::make_shared<transport::KcpTransport>(
-        std::move(socket), strand, transport::KcpTransportConfig::from_kcp_config(config_));
+        strand, transport::KcpTransportConfig::from_kcp_config(config_));
     transport->set_remote_endpoint(peer);
+
+    // 出站 UDP 包通过 listener.send_to 发出（源端口 = 8010）。
+    auto listener_weak = std::weak_ptr<listener::UdpListener>(listener_);
+    transport->set_udp_output(
+        [listener_weak, peer](transport::KcpTransport::Bytes&& data) {
+            if (auto l = listener_weak.lock()) {
+                l->send_to(peer, std::move(data));
+            }
+        });
 
     auto channel = std::make_shared<channel::KcpChannel>(transport);
     install_unreliable_receiver(channel, transport);
 
     // 注册后续数据注入：UdpListener 收到该 peer 的包时转发给 transport。
     auto transport_weak = std::weak_ptr<transport::KcpTransport>(transport);
-    listener_->route(peer, [transport_weak](const std::vector<std::uint8_t>& data) {
+    auto route_token = listener_->route(peer, [transport_weak](const std::vector<std::uint8_t>& data) {
         if (const auto t = transport_weak.lock()) {
             t->inject_inbound(data);
         }
     });
 
     // 通道失活时注销路由，避免 listener 持有野引用。
-    const auto listener_raw = listener_.get();
-    channel->set_on_inactive([listener_raw, peer]() {
+    // 捕获 route_token：unroute 时校验身份，避免端口复用误删新连接 route。
+    auto listener_raw = listener_.get();
+    channel->set_on_inactive([listener_raw, peer, route_token]() {
         if (listener_raw) {
-            listener_raw->unroute(peer);
+            listener_raw->unroute(peer, route_token);
         }
     });
 
@@ -181,19 +180,25 @@ void KcpServer::on_new_peer_plaintext(
 void KcpServer::on_new_peer_dtls(
     const boost::asio::ip::udp::endpoint& peer,
     std::vector<std::uint8_t>&& first_packet,
-    boost::asio::strand<boost::asio::any_io_executor>& strand,
-    boost::asio::ip::udp::socket& socket) {
-    // DtlsTransport 拥有 UDP socket，负责 DTLS 握手与加解密。
+    boost::asio::strand<boost::asio::any_io_executor>& strand) {
+    // DtlsTransport 不持有 socket，出站通过 udp_output_ 走 listener.send_to。
     auto dtls_transport = std::make_shared<transport::DtlsTransport>(
-        std::move(socket), strand, dtls_context_, config_.dtls.handshake_timeout_seconds);
+        strand, dtls_context_, config_.dtls.handshake_timeout_seconds);
     dtls_transport->set_remote_endpoint(peer);
 
-    // KcpTransport 退化为协议层：socket_ 默认构造（未打开），
+    auto listener_weak = std::weak_ptr<listener::UdpListener>(listener_);
+    dtls_transport->set_udp_output(
+        [listener_weak, peer](transport::DtlsTransport::Bytes&& data) {
+            if (auto l = listener_weak.lock()) {
+                l->send_to(peer, std::move(data));
+            }
+        });
+
+    // KcpTransport 退化为协议层：不持有 socket，
     // 入站走 inject_inbound（由 DtlsTransport 解密后回调），
-    // 出站走 udp_output_replacer_（重定向到 DtlsTransport::encrypt_and_send）。
-    boost::asio::ip::udp::socket closed_socket(io_context());  // default-constructed = closed
+    // 出站走 udp_output_（重定向到 DtlsTransport::encrypt_and_send）。
     auto kcp_transport = std::make_shared<transport::KcpTransport>(
-        std::move(closed_socket), strand, transport::KcpTransportConfig::from_kcp_config(config_));
+        strand, transport::KcpTransportConfig::from_kcp_config(config_));
     kcp_transport->set_remote_endpoint(peer);
 
     // 双向 wire，使用 weak_ptr 避免循环引用：
@@ -202,7 +207,7 @@ void KcpServer::on_new_peer_dtls(
     auto dtls_weak = std::weak_ptr<transport::DtlsTransport>(dtls_transport);
     auto kcp_weak = std::weak_ptr<transport::KcpTransport>(kcp_transport);
 
-    kcp_transport->set_udp_output_replacer(
+    kcp_transport->set_udp_output(
         [dtls_weak](transport::KcpTransport::Bytes&& data) {
             if (auto dtls = dtls_weak.lock()) {
                 dtls->encrypt_and_send(std::move(data));
@@ -221,7 +226,7 @@ void KcpServer::on_new_peer_dtls(
 
     // UdpListener 路由：包进 DtlsTransport（不是 KcpTransport）做 DTLS 解密。
     auto dtls_weak_for_route = std::weak_ptr<transport::DtlsTransport>(dtls_transport);
-    listener_->route(peer, [dtls_weak_for_route](const std::vector<std::uint8_t>& data) {
+    auto route_token = listener_->route(peer, [dtls_weak_for_route](const std::vector<std::uint8_t>& data) {
         if (auto dtls = dtls_weak_for_route.lock()) {
             // inject_inbound(Bytes&&) 需要可变缓冲；这里复制后 move。
             transport::DtlsTransport::Bytes copy = data;
@@ -229,17 +234,24 @@ void KcpServer::on_new_peer_dtls(
         }
     });
 
-    // 通道失活：注销路由 + 关闭 DtlsTransport。
-    // lambda 捕获 strong ref 保持 DtlsTransport/KcpTransport 存活到 channel 完全 inactive。
-    const auto listener_raw = listener_.get();
-    auto dtls_strong = dtls_transport;
-    auto kcp_strong = kcp_transport;
-    channel->set_on_inactive([listener_raw, peer, dtls_strong, kcp_strong]() {
+    // 保活：DtlsTransport/KcpTransport 生命周期绑定到 channel（与 channel 同生共死）。
+    // 不再用 on_inactive lambda 捕获 strong ref——on_inactive 会被 register_pending_connection
+    // /attach_inactive_handler 覆盖，导致 strong ref 提前析构、DtlsTransport ref=0 提前析构。
+    // lifetime_tokens_ 在 KcpChannel 析构时释放，保证 DTLS 在 channel 整个生命周期内存活。
+    channel->add_lifetime_token(dtls_transport);
+    channel->add_lifetime_token(kcp_transport);
+
+    // 通道失活：仅做 unroute + close，不再承担保活职责（保活由 lifetime_tokens_ 负责）。
+    // 捕获 route_token：unroute 时校验身份，避免端口复用误删新连接 route。
+    auto listener_raw = listener_.get();
+    auto dtls_weak_for_inactive = std::weak_ptr<transport::DtlsTransport>(dtls_transport);
+    channel->set_on_inactive([listener_raw, peer, route_token, dtls_weak_for_inactive]() {
         if (listener_raw) {
-            listener_raw->unroute(peer);
+            listener_raw->unroute(peer, route_token);
         }
-        dtls_strong->close();
-        // kcp_strong 由 KcpChannel 析构时关闭
+        if (auto dtls = dtls_weak_for_inactive.lock()) {
+            dtls->close();
+        }
     });
 
     // DtlsTransport 关闭时（握手失败/对端关闭/错误）→ 触发 channel 关闭

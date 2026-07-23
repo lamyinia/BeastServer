@@ -48,22 +48,6 @@ void parse_kcp(const nlohmann::json& kcp, KcpConfig& out) {
         assign_if_present(u, "magic", out.unreliable.magic);
         assign_if_present(u, "max_queue_bytes", out.unreliable.max_queue_bytes);
     }
-    if (kcp.contains("crypto") && kcp.at("crypto").is_object()) {
-        const auto& c = kcp.at("crypto");
-        assign_if_present(c, "tag_bytes", out.crypto.tag_bytes);
-        assign_if_present(c, "encrypt_bypass", out.crypto.encrypt_bypass);
-        if (c.contains("mode")) {
-            const auto& mode_str = c.at("mode").get<std::string>();
-            if (mode_str == "none") {
-                out.crypto.mode = KcpCryptoMode::None;
-            } else if (mode_str == "psk_aes_gcm") {
-                out.crypto.mode = KcpCryptoMode::PskAesGcm;
-            } else {
-                throw std::invalid_argument(
-                    "kcp.crypto.mode must be \"none\" or \"psk_aes_gcm\", got: " + mode_str);
-            }
-        }
-    }
     if (kcp.contains("dtls") && kcp.at("dtls").is_object()) {
         const auto& d = kcp.at("dtls");
         assign_if_present(d, "enabled", out.dtls.enabled);
@@ -81,6 +65,14 @@ void parse_websocket(const nlohmann::json& ws, WebsocketConfig& out) {
     assign_if_present(ws, "idle_timeout_seconds", out.idle_timeout_seconds);
     if (ws.contains("allowed_origins") && ws.at("allowed_origins").is_array()) {
         out.allowed_origins = ws.at("allowed_origins").get<std::vector<std::string>>();
+    }
+    if (ws.contains("tls") && ws.at("tls").is_object()) {
+        const auto& tls = ws.at("tls");
+        assign_if_present(tls, "enabled", out.tls.enabled);
+        assign_if_present(tls, "cert_path", out.tls.cert_path);
+        assign_if_present(tls, "key_path", out.tls.key_path);
+        assign_if_present(tls, "min_version", out.tls.min_version);
+        assign_if_present(tls, "cipher_list", out.tls.cipher_list);
     }
 }
 
@@ -440,10 +432,17 @@ std::optional<std::string> validate_server_config(const ServerConfig& config) {
         }
     }
 
-    // KCP 加密参数校验
-    if (config.net.kcp.crypto.enabled()) {
-        if (config.net.kcp.crypto.tag_bytes < 8 || config.net.kcp.crypto.tag_bytes > 16) {
-            return "kcp.crypto.tag_bytes must be in [8, 16]";
+    // WebSocket TLS 校验
+    if (config.net.websocket.tls.enabled) {
+        if (config.net.websocket.tls.cert_path.empty()) {
+            return "websocket.tls.enabled=true requires websocket.tls.cert_path";
+        }
+        if (config.net.websocket.tls.key_path.empty()) {
+            return "websocket.tls.enabled=true requires websocket.tls.key_path";
+        }
+        const auto& wv = config.net.websocket.tls.min_version;
+        if (wv != "TLSv1.2" && wv != "TLSv1.3") {
+            return std::string("websocket.tls.min_version must be \"TLSv1.2\" or \"TLSv1.3\", got: ") + wv;
         }
     }
 
@@ -459,10 +458,6 @@ std::optional<std::string> validate_server_config(const ServerConfig& config) {
         if (dv != "DTLSv1.2" && dv != "DTLSv1.3") {
             return std::string("kcp.dtls.min_version must be \"DTLSv1.2\" or \"DTLSv1.3\", got: ") + dv;
         }
-        // DTLS 与 crypto 互斥：DTLS 已提供 AEAD，应用层 PSK 加密冗余
-        if (config.net.kcp.crypto.enabled()) {
-            return "kcp.dtls.enabled=true conflicts with kcp.crypto.mode!=none (DTLS already provides AEAD)";
-        }
     }
 
     // 生产环境强制加密：debug.enabled=false 时，启用的传输层必须开启加密
@@ -470,12 +465,18 @@ std::optional<std::string> validate_server_config(const ServerConfig& config) {
         if (config.net.tcp.port > 0 && !config.net.tcp.tls.enabled) {
             return "tcp.tls.enabled must be true in production (debug.enabled=false)";
         }
-        if (config.net.kcp.enabled() && !config.net.kcp.crypto.enabled() && !config.net.kcp.dtls.enabled) {
-            return "kcp must enable crypto.mode!=none or dtls.enabled=true in production (debug.enabled=false)";
+        if (config.net.kcp.enabled() && !config.net.kcp.dtls.enabled) {
+            return "kcp.dtls.enabled must be true in production (debug.enabled=false)";
         }
-        // WebSocket 生产环境必须配置 Origin 白名单（防 CSRF）
+        // WebSocket 生产环境必须配置 Origin 白名单（防 CSRF）+ 原生 TLS（防 token 等敏感字段被中间人窃听）
+        // nginx 反代终止 TLS + 后端 ws:// 的部署模式不在此允许范围；
+        // 如需 nginx 反代，请在 nginx 上终止 TLS 后让 beastserver 仅监听内网回环。
         if (config.net.websocket.enabled() && config.net.websocket.allowed_origins.empty()) {
             return "websocket.allowed_origins must not be empty in production (debug.enabled=false)";
+        }
+        if (config.net.websocket.enabled() && !config.net.websocket.tls.enabled) {
+            return "websocket.tls.enabled must be true in production (debug.enabled=false); "
+                   "use nginx reverse-proxy TLS termination only on trusted internal network";
         }
     }
 

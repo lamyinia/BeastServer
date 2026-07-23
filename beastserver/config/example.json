@@ -24,7 +24,7 @@
       }
     },
     "log": {
-      "level": "debug",
+      "level": "error",
       "short_source": true,
       "logger_name": "beast"
     },

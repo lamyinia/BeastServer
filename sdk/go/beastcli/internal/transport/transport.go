@@ -25,7 +25,8 @@ const (
 	TypeTCP       Type = "tcp"
 	TypeTLS       Type = "tls"       // v2
 	TypeKCP       Type = "kcp"       // v3
-	TypeWebSocket Type = "websocket" // v4
+	TypeKCPDTLS   Type = "kcp+dtls"  // v3.5：KCP over DTLS（AEAD 加密）
+	TypeWebSocket Type = "websocket" // v4：ws:// 或 wss://（由 WebSocketConfig.TLS 是否 nil 区分）
 )
 
 // Config 连接配置。具体 transport 类型由 Type 字段决定。
@@ -36,6 +37,47 @@ type Config struct {
 	Timeout time.Duration // 默认 5s
 
 	// TLS 配置（v2）；Type=tls 时必填，其他 Type 忽略。
+	TLS *TLSConfig
+
+	// KCP 配置（v3）；Type=kcp 时必填，其他 Type 忽略。
+	KCP *KCPConfig
+
+	// KCP+DTLS 配置（v3.5）；Type=kcp+dtls 时必填，其他 Type 忽略。
+	KCPDTLS *KCPDTLSConfig
+
+	// WebSocket 配置（v4）；Type=websocket 时必填。
+	// WebSocketConfig.TLS == nil 走 ws://（明文）；非 nil 走 wss://（TLS）
+	WebSocket *WebSocketConfig
+}
+
+// WebSocketConfig WebSocket transport 配置（v4）。
+//
+// 设计选择：用一份 Config 同时支持 ws:// 和 wss://
+//   - TLS == nil：明文 ws://（仅 dev/内网联调，与 server.json tls.enabled=false 对应）
+//   - TLS != nil：加密 wss://（生产强制，与 server.json tls.enabled=true 对应）
+//
+// 与服务端 WebsocketServer 行为对齐：
+//   - URL path：服务端 accept 任意 path，默认 "/" 即可
+//   - Origin header：服务端 allowed_origins 空白名单时允许所有 Origin（仅 debug）
+//   - Subprotocols：服务端未做子协议协商，留空
+//   - 帧格式：binary frame，payload = [4B BE length][Envelope]（与 TCP/TLS 完全一致）
+type WebSocketConfig struct {
+	// Path URL path，默认 "/"。
+	// 服务端 accept 任意 path，留空用 "/"。
+	Path string
+
+	// Origin 客户端 Origin header（可选）。
+	// 服务端 allowed_origins 非空时必须匹配其中之一；
+	// 空白名单（debug 模式）允许任意 Origin，留空也行。
+	Origin string
+
+	// Subprotocols 子协议协商（可选，服务端当前未启用，留空）。
+	Subprotocols []string
+
+	// TLS wss:// 配置（可选）。
+	// 非空时走 wss://（与 server.json net.websocket.tls.enabled=true 对应）；
+	// 为 nil 时走 ws://（仅 debug 模式可用）。
+	// 复用 TLSConfig（ServerName / CAPath / MinVersion 等字段语义不变）。
 	TLS *TLSConfig
 }
 
@@ -64,6 +106,75 @@ type TLSConfig struct {
 	// MinVersion TLS 最低版本，默认 tls.VersionTLS12。
 	// 可选值：tls.VersionTLS12 / tls.VersionTLS13。
 	MinVersion uint16
+
+	// InsecureSkipVerify 跳过证书校验（dev only）。
+	// 用于服务端用 mkcert root CA 当 leaf cert 等场景：root CA 不带 SAN，
+	// ServerName 校验必然失败，只能跳过。
+	// 生产环境严禁开启，必须用带正确 SAN 的 leaf cert。
+	InsecureSkipVerify bool
+}
+
+// KCPConfig KCP transport 配置（v3）。
+//
+// 字段语义对齐 beastserver/server.json 的 net.kcp.* 配置项：
+// 客户端参数必须与服务端一致，否则会出现窗口失配、重传异常等问题。
+//
+// 推荐配置（对应 server.json 默认值）：
+//
+//	KCPConfig{
+//	    Conv:     0x12345678,
+//	    NoDelay:  1,  // 启用 nodelay
+//	    Interval: 10, // 10ms update
+//	    Resend:   2,  // 快速重传阈值
+//	    Nc:       1,  // 关闭拥塞控制（实时游戏场景）
+//	    SndWnd:   32,
+//	    RcvWnd:   128,
+//	}
+type KCPConfig struct {
+	// Conv 会话标识。必须与服务端 server.json net.kcp.conv 完全一致。
+	// 服务端不协商 conv，直接用配置值；客户端必须从配置读取。
+	Conv uint32
+
+	// NoDelay 0 关闭（默认），1 启用。
+	// 启用后 rx_minrto=30ms（vs 100ms），重传更快。
+	NoDelay int
+
+	// Interval update 间隔（ms），10-5000。
+	// 推荐实时游戏 10ms；普通场景 100ms。
+	Interval int
+
+	// Resend 快速重传阈值。0 关闭（默认），2 表示收到 3 个重复 ack 后重传。
+	Resend int
+
+	// Nc 拥塞控制开关。0 启用（默认），1 关闭（实时游戏推荐）。
+	Nc int
+
+	// SndWnd 发送窗口大小（默认 32）。
+	SndWnd int
+
+	// RcvWnd 接收窗口大小（默认 128，必须 >= 128）。
+	RcvWnd int
+
+	// MTU 最大传输单元（默认 1400）。
+	// 注意：UDP 包大小受链路 MTU 限制，超过会分片丢包。
+	MTU int
+}
+
+// KCPDTLSConfig KCP+DTLS transport 配置（v3.5）。
+//
+// 组合 KCP 参数（可靠传输）+ TLS 参数（DTLS 握手）：
+//   - KCP.Conv 必须与服务端 server.json net.kcp.conv 一致
+//   - TLS.CAPath 必填，用自签 CA 作为 DTLS 信任锚点
+//   - TLS.ServerName 必须匹配服务端证书 SAN 的 DNS 名
+//   - TLS.MinVersion 映射到 DTLS 版本（tls.VersionTLS12 → DTLS 1.2）
+//
+// 服务端配置：server.json net.kcp.dtls.enabled=true（与 tcp.tls 复用同一份证书）
+type KCPDTLSConfig struct {
+	// KCP KCP 协议参数。
+	KCP KCPConfig
+
+	// TLS DTLS 握手参数（复用 TLSConfig，ServerName/CAPath/MinVersion 生效）。
+	TLS TLSConfig
 }
 
 // Validate 校验 Config 必填字段。
@@ -81,6 +192,34 @@ func (c Config) Validate() error {
 		if c.TLS.CAPath == "" {
 			return fmt.Errorf("transport: TLSConfig.CAPath required")
 		}
+	}
+	if c.Type == TypeKCP {
+		if c.KCP == nil {
+			return fmt.Errorf("transport: Config.KCP required for Type=kcp")
+		}
+		if c.KCP.Conv == 0 {
+			return fmt.Errorf("transport: KCPConfig.Conv required (must match server.json net.kcp.conv)")
+		}
+	}
+	if c.Type == TypeKCPDTLS {
+		if c.KCPDTLS == nil {
+			return fmt.Errorf("transport: Config.KCPDTLS required for Type=kcp+dtls")
+		}
+		if c.KCPDTLS.KCP.Conv == 0 {
+			return fmt.Errorf("transport: KCPDTLSConfig.KCP.Conv required (must match server.json net.kcp.conv)")
+		}
+		if c.KCPDTLS.TLS.CAPath == "" {
+			return fmt.Errorf("transport: KCPDTLSConfig.TLS.CAPath required")
+		}
+	}
+	if c.Type == TypeWebSocket {
+		if c.WebSocket == nil {
+			return fmt.Errorf("transport: Config.WebSocket required for Type=websocket")
+		}
+		// wss:// 模式下 TLS 字段允许但不强制 CAPath：
+		//   - CAPath 非空：用指定 CA 作信任锚（生产推荐，避免依赖系统信任库）
+		//   - CAPath 为空：走系统信任库（dev 联调用，依赖 mkcert -install 装的 root CA）
+		//   - InsecureSkipVerify=true：跳过校验（仅 dev 临时绕过，生产严禁）
 	}
 	return nil
 }

@@ -19,16 +19,11 @@ constexpr auto kMinUpdateInterval = std::chrono::milliseconds(1);
 constexpr std::uint32_t kDefaultConv = 1;
 } // namespace
 
-KcpTransport::KcpTransport(UdpSocket socket, Strand strand, KcpTransportConfig config)
-    : socket_(std::move(socket))
-    , strand_(std::move(strand))
+KcpTransport::KcpTransport(Strand strand, KcpTransportConfig config)
+    : strand_(std::move(strand))
     , config_(config)
-    , update_timer_(socket_.get_executor()) {
-    boost::system::error_code ec;
-    const auto local = socket_.local_endpoint(ec);
-    if (!ec) {
-        BEAST_LOG_DEBUG("KcpTransport bound to {}:{}", local.address().to_string(), local.port());
-    }
+    , update_timer_(strand_) {
+    BEAST_LOG_DEBUG("KcpTransport created (no socket, strand-bound)");
 }
 
 KcpTransport::~KcpTransport() {
@@ -61,6 +56,13 @@ void KcpTransport::start(OnBytes on_bytes, OnUnreliableBytes on_unreliable,
             BEAST_LOG_WARN("KcpTransport start() called twice");
             return;
         }
+        if (!udp_output_) {
+            BEAST_LOG_ERROR("KcpTransport start() called without udp_output set");
+            if (on_error) {
+                on_error(std::make_error_code(std::errc::invalid_argument));
+            }
+            return;
+        }
         started_ = true;
         on_bytes_ = std::move(on_bytes);
         on_unreliable_bytes_ = std::move(on_unreliable);
@@ -88,7 +90,7 @@ void KcpTransport::start(OnBytes on_bytes, OnUnreliableBytes on_unreliable,
             static_cast<int>(config_.nc));
 
         // ikcp output 回调：在 ikcp_update/ikcp_input/ikcp_send 中被同步调用，
-        // 把 KCP 编码后的 UDP 报文通过 on_udp_output 写到 socket。
+        // 把 KCP 编码后的 UDP 报文交给 udp_output_（listener.send_to 或 DtlsTransport::encrypt_and_send）。
         ikcp_setoutput(kcp_, &KcpTransport::udp_output_cb);
 
         BEAST_LOG_DEBUG(
@@ -96,15 +98,14 @@ void KcpTransport::start(OnBytes on_bytes, OnUnreliableBytes on_unreliable,
             conv, config_.snd_wnd, config_.rcv_wnd, config_.nodelay, config_.interval, config_.resend, config_.nc,
             config_.unreliable_magic);
 
-        do_read();
+        // 入站由 inject_inbound 驱动（UdpListener demux 后调用），无需 do_read。
         schedule_update();
     });
 }
 
 void KcpTransport::send(Bytes&& data) {
     boost::asio::post(strand_, [self = shared_from_this(), this, data = std::move(data)]() mutable {
-        // DTLS 模式下 socket_ 不打开（DtlsTransport 拥有 socket），但 udp_output_replacer_ 处理输出。
-        if (closed_ || !kcp_ || (!socket_.is_open() && !udp_output_replacer_)) {
+        if (closed_ || !kcp_ || !udp_output_) {
             return;
         }
         const int ret = ikcp_send(kcp_, reinterpret_cast<const char*>(data.data()), static_cast<int>(data.size()));
@@ -119,16 +120,13 @@ void KcpTransport::send(Bytes&& data) {
 
 void KcpTransport::send_unreliable(Bytes&& frame) {
     boost::asio::post(strand_, [self = shared_from_this(), this, frame = std::move(frame)]() mutable {
-        // DTLS 模式下 socket_ 不打开，但 udp_output_replacer_ 处理输出
-        if (closed_ || (!socket_.is_open() && !udp_output_replacer_)) {
+        if (closed_ || !udp_output_) {
             return;
         }
         // DTLS 替换路径：旁路帧也走 DtlsTransport::encrypt_and_send，与可靠路径一致。
         // DTLS 提供 AEAD，旁路帧无需在应用层再做背压判定（OpenSSL 内部会处理）。
-        if (udp_output_replacer_) {
-            udp_output_replacer_(std::move(frame));
-            return;
-        }
+        // 简化判定：udp_output_ 目标决定是否需要背压 — 但 transport 无法区分目标，
+        // 统一走队列背压，避免突发旁路帧压垮 listener.send_to 队列。
         // 背压：旁路语义本就是"最新即正确"，超阈值时丢旧帧，绝不阻塞 KCP 可靠路径。
         while (unreliable_queue_bytes_ + frame.size() > config_.max_unreliable_queue_bytes &&
                !unreliable_write_queue_.empty()) {
@@ -149,8 +147,7 @@ void KcpTransport::close() {
 }
 
 bool KcpTransport::is_closed() const noexcept {
-    // DTLS 模式下 socket_ 默认构造（未打开），但 transport 仍正常工作（inject_inbound + replacer）。
-    // 只通过 closed_ flag 判定，避免误报。
+    // transport 不持有 socket，仅通过 closed_ flag 判定。
     return closed_;
 }
 
@@ -209,14 +206,7 @@ int KcpTransport::on_udp_output(const char* buf, int len) {
     Bytes packet(static_cast<std::size_t>(len));
     std::memcpy(packet.data(), buf, static_cast<std::size_t>(len));
 
-    // DTLS 替换路径：UDP 包经 DtlsTransport::encrypt_and_send 走 DTLS 加密后发出。
-    // 此时 KcpTransport 的 socket_ 不直接发 UDP，而是由 DtlsTransport 接管。
-    if (udp_output_replacer_) {
-        udp_output_replacer_(std::move(packet));
-        return 0;
-    }
-
-    // 默认路径：拷贝后入队，按序 async_send_to。
+    // 入队，按序走 udp_output_ 投递（listener.send_to 或 DtlsTransport::encrypt_and_send）。
     write_queue_.push_back(std::move(packet));
     if (!writing_) {
         writing_ = true;
@@ -225,68 +215,13 @@ int KcpTransport::on_udp_output(const char* buf, int len) {
     return 0;
 }
 
-void KcpTransport::do_read() {
-    if (closed_) {
-        return;
-    }
-    // DTLS 模式下 socket_ 未打开（由 DtlsTransport 拥有 socket），inject_inbound 是唯一入站路径。
-    // 这里直接 return，不调 do_close()，避免误关闭 transport。
-    if (!socket_.is_open()) {
-        return;
-    }
-
-    socket_.async_receive_from(
-        boost::asio::buffer(read_buf_),
-        remote_,
-        boost::asio::bind_executor(strand_, [self = shared_from_this(), this](
-                                                const boost::system::error_code& ec,
-                                                const std::size_t n) {
-            if (closed_) {
-                return;
-            }
-            if (ec) {
-                if (ec == boost::asio::error::operation_aborted) {
-                    return;
-                }
-                if (on_error_) {
-                    on_error_(std::error_code(ec.value(), std::system_category()));
-                }
-                do_close();
-                return;
-            }
-
-            if (n > 0) {
-                // Demux：旁路帧优先判定（own-socket 模式兜底路径，与 inject_inbound 对齐）。
-                if (is_unreliable_frame(read_buf_.data(), n, config_.unreliable_magic)) {
-                    if (on_unreliable_bytes_) {
-                        // read_buf_ 会被下一次 async_receive_from 覆盖，必须拷贝。
-                        Bytes copy(read_buf_.begin(), read_buf_.begin() + static_cast<std::ptrdiff_t>(n));
-                        on_unreliable_bytes_(std::move(copy));
-                    }
-                } else if (kcp_) {
-                    const int ret = ikcp_input(
-                        kcp_,
-                        reinterpret_cast<const char*>(read_buf_.data()),
-                        static_cast<long>(n));
-                    if (ret < 0) {
-                        BEAST_LOG_DEBUG("ikcp_input(read) ret={} size={}", ret, n);
-                    } else {
-                        poll_recv();
-                    }
-                }
-            }
-            do_read();
-        }));
-}
-
 void KcpTransport::do_write() {
-    if (closed_ || !socket_.is_open()) {
+    if (closed_ || !udp_output_) {
         writing_ = false;
         return;
     }
 
     // 队列选择：KCP 可靠路径优先（不能被旁路饿死），旁路其次。
-    // UDP 单 socket 不能并发 async_send_to，两个队列共享 writing_ flag 串行化。
     const bool is_unreliable = write_queue_.empty();
     if (is_unreliable && unreliable_write_queue_.empty()) {
         writing_ = false;
@@ -295,39 +230,22 @@ void KcpTransport::do_write() {
 
     auto& queue = is_unreliable ? unreliable_write_queue_ : write_queue_;
     const std::size_t front_size = queue.front().size();
+    Bytes packet = std::move(queue.front());
+    queue.pop_front();
+    if (is_unreliable) {
+        unreliable_queue_bytes_ -= std::min(unreliable_queue_bytes_, front_size);
+    }
 
-    socket_.async_send_to(
-        boost::asio::buffer(queue.front()),
-        remote_,
-        boost::asio::bind_executor(strand_, [self = shared_from_this(), this,
-                                             is_unreliable, front_size](
-                                                 const boost::system::error_code& ec,
-                                                 std::size_t) {
-            if (closed_) {
-                writing_ = false;
-                return;
-            }
-            if (ec) {
-                if (on_error_) {
-                    on_error_(std::error_code(ec.value(), std::system_category()));
-                }
-                do_close();
-                writing_ = false;
-                return;
-            }
-            // 完成后扣减对应队列
-            if (is_unreliable) {
-                unreliable_queue_bytes_ -= std::min(unreliable_queue_bytes_, front_size);
-                if (!unreliable_write_queue_.empty()) {
-                    unreliable_write_queue_.pop_front();
-                }
-            } else {
-                if (!write_queue_.empty()) {
-                    write_queue_.pop_front();
-                }
-            }
-            do_write();
-        }));
+    // 投递给外部（同步回调，但外部实现可能 post 到自己的 strand 异步处理）。
+    // 不等待 completion — UDP 不可靠，丢包由 KCP 重传机制兜底。
+    udp_output_(std::move(packet));
+
+    // 继续处理队列里下一个包（同 strand 内递归，避免栈溢出用 post）。
+    if (!write_queue_.empty() || !unreliable_write_queue_.empty()) {
+        boost::asio::post(strand_, [self = shared_from_this(), this]() { do_write(); });
+    } else {
+        writing_ = false;
+    }
 }
 
 void KcpTransport::poll_recv() {
@@ -360,10 +278,7 @@ void KcpTransport::do_close() {
 
     boost::system::error_code ignored;
     update_timer_.cancel(ignored);
-    if (socket_.is_open()) {
-        socket_.cancel(ignored);
-        socket_.close(ignored);
-    }
+    // 不持有 socket，无需 close（socket 由 UdpListener 管理）
 
     write_queue_.clear();
     unreliable_write_queue_.clear();

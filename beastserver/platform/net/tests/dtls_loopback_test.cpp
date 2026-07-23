@@ -1,4 +1,5 @@
 #include "beast/platform/core/log/logger.hpp"
+#include "beast/platform/net/listener/udp_listener.hpp"
 #include "beast/platform/net/transport/dtls_transport.hpp"
 
 #include <gtest/gtest.h>
@@ -15,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -230,52 +232,63 @@ TEST(DtlsTransportTest, BuildContextWithDtlsx13Version) {
 
 /// DTLS 握手 + 加密数据双向 loopback 集成测试。
 ///
-/// 架构：
-///   - listener_socket 绑 server_port（模拟 UdpListener 角色，接收 client → server 方向）
-///   - DtlsTransport 用 ephemeral socket（async_send_to 发 server → client 方向）
+/// 架构（与生产一致：UdpListener 单 socket 全双工）：
+///   - UdpListener 绑临时端口（模拟生产 8010），收 + 发共用同一 socket
+///   - DtlsTransport 不持有 socket，通过 set_udp_output 回调把加密包交给 listener.send_to
 ///   - DtlsTestClient 用独立 socket（send_to server_port, recv from any）
-///   - io_context.run() 驱动 DtlsTransport 内部 async_send_to
+///   - io_context.run() 驱动 UdpListener + DtlsTransport 的异步操作
 ///
 /// 数据流：
-///   1. Client.send → UDP → listener_socket → inject_inbound(dtls_server)
-///   2. dtls_server 处理（解密/握手） → async_send_to → Client.recv
+///   1. Client.send → UDP → UdpListener.do_receive → on_new_peer → inject_inbound(dtls_server)
+///   2. dtls_server 处理（解密/握手） → udp_output_ → listener.send_to → Client.recv
 TEST(DtlsLoopbackTest, HandshakeAndRoundTrip) {
     core::init_log({.level = "warn"});
     DtlsCertFixture fixture;
 
     boost::asio::io_context ioc;
 
-    // === 服务端：DtlsTransport ===
+    // === 服务端：UdpListener + DtlsTransport ===
     auto ssl_ctx = transport::DtlsTransport::build_dtls_context(
         fixture.cert_path(), fixture.key_path(), "DTLSv1.2", "");
     ASSERT_NE(ssl_ctx, nullptr);
 
-    // listener_socket 绑 server_port（模拟 UdpListener）
-    boost::asio::ip::udp::socket listener_socket(ioc, boost::asio::ip::udp::v4());
-    boost::system::error_code bind_ec;
-    listener_socket.bind(boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), 0), bind_ec);
-    ASSERT_FALSE(bind_ec) << "listener bind failed: " << bind_ec.message();
-    const std::uint16_t server_port = listener_socket.local_endpoint().port();
-
-    // DtlsTransport 用 ephemeral socket（async_send_to 用）
-    boost::asio::ip::udp::socket dtls_socket(ioc, boost::asio::ip::udp::v4());
-    dtls_socket.bind(boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), 0), bind_ec);
-    ASSERT_FALSE(bind_ec);
+    // UdpListener 绑临时端口（单 socket 全双工，模拟生产 8010）
+    auto listener = std::make_shared<net::listener::UdpListener>(
+        ioc,
+        boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), 0));
+    const std::uint16_t server_port = listener->port();
+    ASSERT_GT(server_port, 0);
 
     auto strand = boost::asio::make_strand(ioc.get_executor());
     auto dtls_server = std::make_shared<transport::DtlsTransport>(
-        std::move(dtls_socket), strand, ssl_ctx, /*handshake_timeout=*/5);
+        strand, ssl_ctx, /*handshake_timeout=*/5);
 
     // 记录服务端收到的 plaintext
     std::atomic<bool> received_hello{false};
     std::vector<std::uint8_t> received_data;
+    std::mutex data_mutex;
 
     dtls_server->set_on_decrypted([&](transport::DtlsTransport::Bytes&& data) {
-        received_data.assign(data.begin(), data.end());
+        {
+            std::lock_guard lock(data_mutex);
+            received_data.assign(data.begin(), data.end());
+        }
         received_hello.store(true, std::memory_order_release);
         // 收到 client 的 hello 后，回复 server_hello
         std::string reply = "server_hello";
         dtls_server->encrypt_and_send(Bytes(reply.begin(), reply.end()));
+    });
+
+    // 注入 udp_output 回调：DtlsTransport 加密后的包通过 listener.send_to 发到 client。
+    // client_ep 在 on_new_peer 中先设置（release），再 inject_inbound（post 到 strand），
+    // 故 udp_output 在 strand 上读取 client_ep 时必然已设置（acquire）。
+    std::atomic<bool> client_ep_set{false};
+    boost::asio::ip::udp::endpoint client_ep;
+    dtls_server->set_udp_output([&](transport::DtlsTransport::Bytes&& data) {
+        if (!client_ep_set.load(std::memory_order_acquire)) {
+            return;
+        }
+        listener->send_to(client_ep, std::move(data));
     });
 
     // 启动 DTLS 握手：创建 SSL/BIO 等内部状态。必须在 listener 收到首包前调用，
@@ -290,43 +303,27 @@ TEST(DtlsLoopbackTest, HandshakeAndRoundTrip) {
             handshake_failed.store(true, std::memory_order_release);
         });
 
-    // 启动 io_context.run（驱动 DtlsTransport 内部 async_send_to）
-    std::atomic<bool> io_stop{false};
+    // UdpListener 启动：首包触发 on_new_peer，设置 client_ep + route 后续包 inject_inbound
+    listener->start(
+        [](const std::error_code& ec) { BEAST_LOG_ERROR("listener error: {}", ec.message()); },
+        [&](const boost::asio::ip::udp::endpoint& peer, std::vector<std::uint8_t>&& first_packet) {
+            client_ep = peer;
+            client_ep_set.store(true, std::memory_order_release);
+            dtls_server->set_remote_endpoint(peer);
+            // 注册 route：后续包直接 inject_inbound（首包在 on_new_peer 末尾注入）
+            listener->route(peer, [dtls_server](const std::vector<std::uint8_t>& data) {
+                Bytes copy(data.begin(), data.end());
+                dtls_server->inject_inbound(std::move(copy));
+            });
+            // 首包也要 inject
+            Bytes copy(first_packet.begin(), first_packet.end());
+            dtls_server->inject_inbound(std::move(copy));
+        });
+
+    // 启动 io_context.run（驱动 UdpListener async_receive_from + DtlsTransport strand）
     std::thread io_thread([&]() {
         auto work_guard = boost::asio::make_work_guard(ioc);
         ioc.run();
-        (void)io_stop;
-    });
-
-    // listener pump 线程：select on listener_socket，receive_from，inject_inbound
-    std::atomic<bool> listener_stop{false};
-    boost::asio::ip::udp::endpoint client_ep;
-    std::thread listener_thread([&]() {
-        std::array<std::uint8_t, 4096> buf{};
-        while (!listener_stop.load()) {
-            fd_set rfds;
-            FD_ZERO(&rfds);
-            const int fd = static_cast<int>(listener_socket.native_handle());
-            FD_SET(fd, &rfds);
-            timeval tv{};
-            tv.tv_sec = 0;
-            tv.tv_usec = 50 * 1000;
-            const int sel = ::select(fd + 1, &rfds, nullptr, nullptr, &tv);
-            if (sel > 0) {
-                boost::system::error_code ec;
-                boost::asio::ip::udp::endpoint sender;
-                const std::size_t n = listener_socket.receive_from(
-                    boost::asio::buffer(buf), sender, 0, ec);
-                if (!ec && n > 0) {
-                    if (client_ep.port() == 0) {
-                        client_ep = sender;
-                        dtls_server->set_remote_endpoint(sender);
-                    }
-                    Bytes copy(buf.begin(), buf.begin() + n);
-                    dtls_server->inject_inbound(std::move(copy));
-                }
-            }
-        }
     });
 
     // === 客户端：DtlsTestClient ===
@@ -349,8 +346,11 @@ TEST(DtlsLoopbackTest, HandshakeAndRoundTrip) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     EXPECT_TRUE(received_hello.load(std::memory_order_acquire));
-    ASSERT_EQ(received_data.size(), hello.size());
-    EXPECT_EQ(std::string(received_data.begin(), received_data.end()), hello);
+    {
+        std::lock_guard lock(data_mutex);
+        ASSERT_EQ(received_data.size(), hello.size());
+        EXPECT_EQ(std::string(received_data.begin(), received_data.end()), hello);
+    }
 
     // 客户端接收服务端回复
     std::vector<std::uint8_t> reply;
@@ -359,9 +359,8 @@ TEST(DtlsLoopbackTest, HandshakeAndRoundTrip) {
     EXPECT_EQ(std::string(reply.begin(), reply.end()), "server_hello");
 
     // 清理
-    listener_stop.store(true);
-    listener_thread.join();
     ioc.stop();
     io_thread.join();
+    listener->stop();
     dtls_server->close();
 }

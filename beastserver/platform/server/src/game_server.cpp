@@ -125,11 +125,6 @@ GameServer::GameServer(core::config::ServerConfig config, GameServerOptions opti
               .interval = config_.net.kcp.interval,
               .resend = config_.net.kcp.resend,
               .nc = config_.net.kcp.nc,
-              .crypto = {
-                  .enabled = config_.net.kcp.crypto.enabled(),
-                  .tag_bytes = config_.net.kcp.crypto.tag_bytes,
-                  .encrypt_bypass = config_.net.kcp.crypto.encrypt_bypass,
-              },
           },
           net::auth::make_auth_verifier(config_.auth)))
     , shared_outbound_hub_(
@@ -335,7 +330,13 @@ void GameServer::stop() {
 }
 
 bool GameServer::reload_tls_cert() {
-    return tcp_server_.reload_tls_cert();
+    // 顺序无关：各自独立构建 ssl::context 并 swap。
+    // 任一失败保留旧 context，不影响另一协议。
+    bool ok = tcp_server_.reload_tls_cert();
+    if (websocket_server_) {
+        ok = websocket_server_->reload_tls_cert() && ok;
+    }
+    return ok;
 }
 
 } // namespace beast::platform::server

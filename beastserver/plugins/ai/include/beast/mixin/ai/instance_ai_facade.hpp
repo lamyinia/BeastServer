@@ -1,9 +1,9 @@
 #pragma once
 
-#include "beast/platform/ai/model/ai_types.hpp"
+#include "beast/mixin/ai/model/ai_types.hpp"
 #include "beast/mixin/ai/_platform_compat.hpp"
-#include "beast/platform/ai/model/chat.hpp"
-#include "beast/platform/ai/service/ai_service.hpp"
+#include "beast/mixin/ai/model/chat.hpp"
+#include "beast/mixin/ai/service/ai_service.hpp"
 #include "beast/platform/core/types.hpp"
 #include "beast/mixin/ai/ai_delivery.hpp"
 #include "beast/mixin/ai/ai_tool.hpp"

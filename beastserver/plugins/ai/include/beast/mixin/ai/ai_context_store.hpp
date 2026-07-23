@@ -1,6 +1,6 @@
 #pragma once
 
-#include "beast/platform/ai/model/chat.hpp"
+#include "beast/mixin/ai/model/chat.hpp"
 #include "beast/mixin/ai/_platform_compat.hpp"
 #include "beast/platform/core/types.hpp"
 

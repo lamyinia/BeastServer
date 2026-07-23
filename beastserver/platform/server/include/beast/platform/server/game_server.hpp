@@ -35,7 +35,8 @@ public:
     void start();
     void stop();
 
-    /// 热重载 TLS 证书（SIGHUP 触发）：委托给 TcpServer::reload_tls_cert()。
+    /// 热重载 TLS 证书（SIGHUP 触发）：委托给 TcpServer/WebsocketServer::reload_tls_cert()。
+    /// TCP 和 WebSocket 各自独立构建 ssl::context 并 swap；任一失败保留旧 context，不影响另一协议。
     /// 旧连接保持旧 context，新连接用新 context，零停机轮换。
     [[nodiscard]] bool reload_tls_cert();
 

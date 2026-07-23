@@ -8,8 +8,8 @@
 //   "dirtypersist.facade"  → shared_ptr<beast::mixin::dirtypersist::InstanceDirtyPersistFacade>
 
 #include "beast/platform/core/log/logger.hpp"
-#include "beast/platform/dirtypersist/dirty_persist_config.hpp"
-#include "beast/platform/dirtypersist/dirty_persist_service.hpp"
+#include "beast/mixin/dirtypersist/dirty_persist_config.hpp"
+#include "beast/mixin/dirtypersist/dirty_persist_service.hpp"
 #include "beast/mixin/dirtypersist/instance_dirty_persist_facade.hpp"
 #include "beast/platform/plugin/platform_context.hpp"
 #include "beast/platform/plugin/platform_plugin_api.hpp"

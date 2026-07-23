@@ -1,7 +1,6 @@
 #include "beast/platform/net/channel/kcp_channel.hpp"
 
 #include "beast/platform/core/log/logger.hpp"
-#include "beast/platform/net/channel/codec/kcp_crypto_handler.hpp"
 #include "beast/platform/net/session/session.hpp"
 
 #include <boost/asio/post.hpp>
@@ -116,51 +115,8 @@ void KcpChannel::send_unreliable_frame(Bytes&& data) {
         return;
     }
 
-    // 旁路加密：crypto handler 已激活时，加密 payload 部分。
-    // 输入格式：[magic(2)|route_id(2)|seq(4)|payload(N)]
-    // 输出格式：[magic(2)|route_id(2)|seq(4)|ciphertext(N)|tag(16)]
-    // header(8B) 作为 GCM AAD 认证，seq 作为 nonce。
-    if (bypass_crypto_handler_ && bypass_crypto_handler_->is_enabled()) {
-        if (data.size() < transport::kUnreliableFrameHeaderSize) {
-            BEAST_LOG_WARN("send_unreliable_frame: frame too short for encryption: {}", data.size());
-            return;
-        }
-
-        // 提取 header（AAD）和 seq
-        const auto* header = data.data();
-        const std::size_t header_len = transport::kUnreliableFrameHeaderSize;
-        const std::uint32_t seq =
-            (static_cast<std::uint32_t>(header[4]) << 24)
-            | (static_cast<std::uint32_t>(header[5]) << 16)
-            | (static_cast<std::uint32_t>(header[6]) << 8)
-            | static_cast<std::uint32_t>(header[7]);
-
-        // 提取 payload（header 之后的部分）
-        transport::CryptoBytes plaintext(
-            data.begin() + static_cast<std::ptrdiff_t>(header_len),
-            data.end());
-
-        // 加密：返回 [ciphertext | tag]
-        auto encrypted = bypass_crypto_handler_->encrypt_bypass(
-            plaintext, seq, header, header_len);
-        if (!encrypted) {
-            BEAST_LOG_WARN("send_unreliable_frame: encrypt_bypass failed, dropping frame");
-            return;
-        }
-
-        // 重组：header + ciphertext + tag
-        Bytes encrypted_frame;
-        encrypted_frame.reserve(header_len + encrypted->size());
-        encrypted_frame.insert(encrypted_frame.end(), header, header + header_len);
-        encrypted_frame.insert(encrypted_frame.end(), encrypted->begin(), encrypted->end());
-
-        if (transport_) {
-            transport_->send_unreliable(std::move(encrypted_frame));
-        }
-        return;
-    }
-
-    // 明文路径：直接转发
+    // KCP 加密由 DTLS 在 UDP 层处理（DtlsTransport），旁路帧在 DTLS 模式下自动加密；
+    // 非 DTLS 模式下明文（仅 dev 环境允许）。pipeline 层不再做应用层加密。
     if (transport_) {
         transport_->send_unreliable(std::move(data));
     }
@@ -184,6 +140,12 @@ void KcpChannel::set_on_inactive(OnInactive on_inactive) {
 
 void KcpChannel::bind_session(std::shared_ptr<session::Session> session) {
     session_ = std::move(session);
+}
+
+void KcpChannel::add_lifetime_token(std::shared_ptr<void> token) {
+    if (token) {
+        lifetime_tokens_.push_back(std::move(token));
+    }
 }
 
 void KcpChannel::dispatch(std::function<void()> fn) {
@@ -213,50 +175,9 @@ void KcpChannel::on_transport_unreliable_bytes(Bytes&& data) {
         return;
     }
 
-    // 旁路解密：crypto handler 已激活时，解密 ciphertext 部分。
-    // 输入格式：[magic(2)|route_id(2)|seq(4)|ciphertext(N)|tag(16)]
-    // 输出格式：[magic(2)|route_id(2)|seq(4)|payload(N)]（传给 UnreliableReceiver）
-    // header(8B) 作为 GCM AAD 认证，seq 作为 nonce。
-    if (bypass_crypto_handler_ && bypass_crypto_handler_->is_enabled()) {
-        if (data.size() < transport::kUnreliableFrameHeaderSize) {
-            BEAST_LOG_WARN("on_transport_unreliable_bytes: frame too short: {}", data.size());
-            return;
-        }
-
-        const auto* header = data.data();
-        const std::size_t header_len = transport::kUnreliableFrameHeaderSize;
-        const std::uint32_t seq =
-            (static_cast<std::uint32_t>(header[4]) << 24)
-            | (static_cast<std::uint32_t>(header[5]) << 16)
-            | (static_cast<std::uint32_t>(header[6]) << 8)
-            | static_cast<std::uint32_t>(header[7]);
-
-        // 提取 ciphertext + tag（header 之后的部分）
-        transport::CryptoBytes ciphertext_and_tag(
-            data.begin() + static_cast<std::ptrdiff_t>(header_len),
-            data.end());
-
-        // 解密：返回 plaintext 或 nullopt（认证失败）
-        auto plaintext = bypass_crypto_handler_->decrypt_bypass(
-            ciphertext_and_tag, seq, header, header_len);
-        if (!plaintext) {
-            BEAST_LOG_DEBUG("on_transport_unreliable_bytes: decrypt failed (auth tag mismatch), dropping frame");
-            return;
-        }
-
-        // 重组：header + plaintext（UnreliableReceiver 期望明文帧格式）
-        Bytes decrypted_frame;
-        decrypted_frame.reserve(header_len + plaintext->size());
-        decrypted_frame.insert(decrypted_frame.end(), header, header + header_len);
-        decrypted_frame.insert(decrypted_frame.end(), plaintext->begin(), plaintext->end());
-
-        if (on_unreliable_bytes_) {
-            on_unreliable_bytes_(std::move(decrypted_frame));
-        }
-        return;
-    }
-
-    // 明文路径：旁路帧不进 pipeline（pipeline 是可靠路径专用）。
+    // KCP 加密由 DTLS 在 UDP 层处理（DtlsTransport），旁路帧在 DTLS 模式下已自动解密；
+    // 非 DTLS 模式下明文（仅 dev 环境允许）。pipeline 层不再做应用层解密。
+    // 旁路帧不进 pipeline（pipeline 是可靠路径专用），
     // 直接转发给上层（OutboundHub/Router）设置的 on_unreliable_bytes_ 回调。
     if (on_unreliable_bytes_) {
         on_unreliable_bytes_(std::move(data));

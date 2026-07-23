@@ -32,7 +32,7 @@ TEST(ServerConfigTest, LoadsExampleServerJson) {
     EXPECT_TRUE(server.plugins.auto_load);
     EXPECT_TRUE(server.plugins.only.empty());
     EXPECT_TRUE(server.plugins.disable.empty());
-    EXPECT_FALSE(server.bizconfig.enabled);
+    EXPECT_TRUE(server.bizconfig.enabled);
     EXPECT_EQ(server.bizconfig.dir, "bizconfig/server");
     EXPECT_EQ(server.bizconfig.manifest_file, "manifest.json");
     EXPECT_TRUE(server.ai.enabled);
@@ -173,62 +173,6 @@ TEST(ServerConfigTest, ParsesTcpTlsConfig) {
     EXPECT_EQ(tls.cipher_list, "ECDHE-RSA-AES256-GCM-SHA384");
 }
 
-TEST(ServerConfigTest, ParsesKcpCryptoConfig) {
-    const auto temp = std::filesystem::temp_directory_path() / "beastserver-kcp-crypto-test.json";
-    std::ofstream out(temp);
-    out << R"({
-      "server": {
-        "host": "127.0.0.1",
-        "grpc": { "port": 9010 },
-        "debug": { "enabled": true },
-        "auth": { "mode": "dev" },
-        "net": {
-          "kcp": {
-            "port": 8010,
-            "crypto": {
-              "mode": "psk_aes_gcm",
-              "tag_bytes": 16,
-              "encrypt_bypass": true
-            }
-          }
-        }
-      }
-    })";
-    out.close();
-
-    auto result = load_server_config_from_file(temp.string());
-    ASSERT_TRUE(result.ok()) << result.error().to_string();
-    const auto& crypto = result.value().net.kcp.crypto;
-    EXPECT_EQ(crypto.mode, KcpCryptoMode::PskAesGcm);
-    EXPECT_TRUE(crypto.enabled());
-    EXPECT_EQ(crypto.tag_bytes, 16u);
-    EXPECT_TRUE(crypto.encrypt_bypass);
-}
-
-TEST(ServerConfigTest, RejectsInvalidKcpCryptoMode) {
-    const auto temp = std::filesystem::temp_directory_path() / "beastserver-bad-crypto-mode.json";
-    std::ofstream out(temp);
-    out << R"({
-      "server": {
-        "host": "127.0.0.1",
-        "grpc": { "port": 9010 },
-        "debug": { "enabled": true },
-        "auth": { "mode": "dev" },
-        "net": {
-          "kcp": {
-            "port": 8010,
-            "crypto": { "mode": "bogus" }
-          }
-        }
-      }
-    })";
-    out.close();
-
-    auto result = load_server_config_from_file(temp.string());
-    ASSERT_FALSE(result.ok());
-    EXPECT_NE(result.error().to_string().find("kcp.crypto.mode"), std::string::npos);
-}
-
 TEST(ServerConfigTest, RejectsTlsEnabledWithoutCert) {
     const auto temp = std::filesystem::temp_directory_path() / "beastserver-tls-no-cert.json";
     std::ofstream out(temp);
@@ -303,8 +247,8 @@ TEST(ServerConfigTest, ProductionForcesTcpTls) {
     EXPECT_NE(result.error().to_string().find("tcp.tls.enabled must be true"), std::string::npos);
 }
 
-TEST(ServerConfigTest, ProductionForcesKcpCrypto) {
-    const auto temp = std::filesystem::temp_directory_path() / "beastserver-prod-no-kcp-crypto.json";
+TEST(ServerConfigTest, ProductionForcesKcpDtls) {
+    const auto temp = std::filesystem::temp_directory_path() / "beastserver-prod-no-kcp-dtls.json";
     std::ofstream out(temp);
     out << R"({
       "server": {
@@ -325,7 +269,7 @@ TEST(ServerConfigTest, ProductionForcesKcpCrypto) {
 
     auto result = load_server_config_from_file(temp.string());
     ASSERT_FALSE(result.ok());
-    EXPECT_NE(result.error().to_string().find("kcp.crypto.mode"), std::string::npos);
+    EXPECT_NE(result.error().to_string().find("kcp.dtls.enabled must be true"), std::string::npos);
 }
 
 TEST(ServerConfigTest, ProductionAllowsEncryptedTransport) {
@@ -344,7 +288,7 @@ TEST(ServerConfigTest, ProductionAllowsEncryptedTransport) {
           },
           "kcp": {
             "port": 8010,
-            "crypto": { "mode": "psk_aes_gcm" }
+            "dtls": { "enabled": true, "cert_path": "/x.crt", "key_path": "/x.key" }
           }
         }
       }
@@ -375,12 +319,10 @@ TEST(ServerConfigTest, DefaultsTcpTlsDisabled) {
     auto result = load_server_config_from_file(temp.string());
     ASSERT_TRUE(result.ok()) << result.error().to_string();
     EXPECT_FALSE(result.value().net.tcp.tls.enabled);
-    EXPECT_EQ(result.value().net.kcp.crypto.mode, KcpCryptoMode::None);
-    EXPECT_FALSE(result.value().net.kcp.crypto.enabled());
+    EXPECT_FALSE(result.value().net.kcp.dtls.enabled);
     // 默认值检查
     EXPECT_EQ(result.value().net.tcp.tls.min_version, "TLSv1.2");
-    EXPECT_EQ(result.value().net.kcp.crypto.tag_bytes, 16u);
-    EXPECT_TRUE(result.value().net.kcp.crypto.encrypt_bypass);
+    EXPECT_EQ(result.value().net.kcp.dtls.min_version, "DTLSv1.2");
 }
 
 } // namespace

@@ -10,7 +10,8 @@
 namespace beast::platform::net::listener {
 
 UdpListener::UdpListener(boost::asio::io_context& ioc, const boost::asio::ip::udp::endpoint& endpoint)
-    : socket_(ioc) {
+    : socket_(ioc)
+    , strand_(boost::asio::make_strand(ioc)) {
     boost::system::error_code ec;
     socket_.open(endpoint.protocol(), ec);
     if (ec) {
@@ -59,16 +60,34 @@ void UdpListener::stop() {
     }
     std::lock_guard lock(routes_mutex_);
     routes_.clear();
+    // send_queue_ 在 strand_ 上访问，post 一个清理任务保证安全
+    boost::asio::post(strand_, [self = shared_from_this(), this]() {
+        send_queue_.clear();
+        sending_ = false;
+    });
 }
 
-void UdpListener::route(const boost::asio::ip::udp::endpoint& endpoint, InjectFn injector) {
+UdpListener::RouteToken UdpListener::route(const boost::asio::ip::udp::endpoint& endpoint, InjectFn injector) {
+    // 每次注册生成一个新的 token（shared_ptr<void>），调用方需保存以便 unroute 时校验身份。
+    // 端口复用场景：旧连接的 unroute 即便延迟触发，因 token 不匹配也不会误删新连接的 route。
+    auto token = std::make_shared<int>(0);
     std::lock_guard lock(routes_mutex_);
-    routes_[endpoint_key(endpoint)] = std::move(injector);
+    routes_[endpoint_key(endpoint)] = {std::move(injector), std::weak_ptr<void>(token)};
+    return token;
 }
 
-void UdpListener::unroute(const boost::asio::ip::udp::endpoint& endpoint) {
+void UdpListener::unroute(const boost::asio::ip::udp::endpoint& endpoint, RouteToken token) {
     std::lock_guard lock(routes_mutex_);
-    routes_.erase(endpoint_key(endpoint));
+    const auto it = routes_.find(endpoint_key(endpoint));
+    if (it == routes_.end()) {
+        return;  // route 不存在（可能已被新连接覆盖后又被清除）
+    }
+    // 校验 token 身份：仅当传入 token 与注册时 token 是同一对象时才删除。
+    // 不匹配说明 route 已被新连接覆盖（端口复用），保留新连接的 route。
+    const auto stored = it->second.second.lock();
+    if (stored && stored.get() == token.get()) {
+        routes_.erase(it);
+    }
 }
 
 void UdpListener::do_receive() {
@@ -79,7 +98,9 @@ void UdpListener::do_receive() {
     socket_.async_receive_from(
         boost::asio::buffer(recv_buf_),
         sender_,
-        [this](const boost::system::error_code& ec, const std::size_t n) {
+        boost::asio::bind_executor(strand_, [self = shared_from_this(), this](
+                                                const boost::system::error_code& ec,
+                                                const std::size_t n) {
             if (!started_) {
                 return;
             }
@@ -104,7 +125,7 @@ void UdpListener::do_receive() {
                 std::lock_guard lock(routes_mutex_);
                 const auto it = routes_.find(endpoint_key(sender));
                 if (it != routes_.end()) {
-                    injector = it->second;
+                    injector = it->second.first;
                 }
             }
 
@@ -115,7 +136,43 @@ void UdpListener::do_receive() {
             }
 
             do_receive();
-        });
+        }));
+}
+
+void UdpListener::send_to(const boost::asio::ip::udp::endpoint& endpoint, std::vector<std::uint8_t> data) {
+    boost::asio::post(strand_, [self = shared_from_this(), this, endpoint, data = std::move(data)]() mutable {
+        if (!started_) {
+            return;
+        }
+        send_queue_.emplace_back(endpoint, std::move(data));
+        if (!sending_) {
+            sending_ = true;
+            do_send_next();
+        }
+    });
+}
+
+void UdpListener::do_send_next() {
+    if (send_queue_.empty()) {
+        sending_ = false;
+        return;
+    }
+
+    auto [endpoint, data] = std::move(send_queue_.front());
+    send_queue_.pop_front();
+
+    socket_.async_send_to(
+        boost::asio::buffer(data),
+        endpoint,
+        boost::asio::bind_executor(strand_, [self = shared_from_this(), this](
+                                                const boost::system::error_code& ec,
+                                                std::size_t /*sent*/) {
+            if (ec) {
+                // UDP 不可靠，send 错误仅记录，不停止 listener
+                BEAST_LOG_DEBUG("UdpListener send_to error: {}", ec.message());
+            }
+            do_send_next();
+        }));
 }
 
 std::string UdpListener::endpoint_key(const Endpoint& ep) {

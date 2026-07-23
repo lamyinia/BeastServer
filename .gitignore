@@ -17,7 +17,25 @@ Testing/
 conan/
 conan_toolchain.cmake
 conanbuildinfo.*
+conanbuild.sh
+conanbuildenv-*.sh
+conanrun.sh
+conanrunenv-*.sh
+deactivate_conanbuild.sh
+deactivate_conanrun.sh
 CMakeUserPresets.json
+CMakePresets.json
+
+# Conan CMakeDeps 产物（源码根目录下的 *-config.cmake / *Targets.cmake 等）
+# 这些应由 conan install 输出到 build/ 而非源码目录
+beastserver/*-config.cmake
+beastserver/*-config-version.cmake
+beastserver/*-release-*.cmake
+beastserver/*-Target-release.cmake
+beastserver/*Targets.cmake
+beastserver/Find*.cmake
+beastserver/cmakedeps_macros.cmake
+beastserver/conandeps_legacy.cmake
 
 # Compiled artifacts
 *.o

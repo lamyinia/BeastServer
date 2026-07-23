@@ -61,6 +61,11 @@ public:
 
     virtual void bind_session(std::shared_ptr<session::Session> session) {}
 
+    /// 附加生命周期 token：token 与 channel 同生共死，用于保活外部对象（如 DtlsTransport），
+    /// 避免 set_on_inactive 被覆盖时丢失对外部对象的强引用。
+    /// 默认空实现；仅 KcpChannel 在 DTLS 模式下 override。
+    virtual void add_lifetime_token(std::shared_ptr<void> token) { (void)token; }
+
     // 将任务投递到 Session strand；跨线程写 pipeline 状态必须用此接口。
     virtual void dispatch(std::function<void()> fn) = 0;
 };

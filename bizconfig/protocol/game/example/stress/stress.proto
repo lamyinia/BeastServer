@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package beast.demo;
+package beast.stress;
 
 // ==========================================================================
 // Stress Event / Stress Tick 压测插件协议
@@ -32,15 +32,20 @@ package beast.demo;
 //   - 推荐压测客户端 ramp-up connect（每秒 50-100 个），避免瞬时 SYN 风暴
 //
 // RTT 测量说明：
+//   - 所有时间戳用 wall clock 毫秒（C++ system_clock / Go time.Now().UnixMilli()），
+//     而非 steady_clock：让客户端 wall clock 可直接与服务端时间戳相减算 uplink/downlink。
+//     代价：受 NTP 跳变影响，压测环境通常可接受。
+//   - 前置条件：客户端与服务端机器需 NTP 同步（chrony/systemd-timesyncd），
+//     否则 uplink/downlink 含两机时钟偏移，无意义。
 //   - EchoResponse / ComputeResponse 携带三个时间戳：
 //     * client_send_ts_ms：客户端发送时填，服务端原样回包
 //     * server_recv_ts_ms：服务端 IO 线程收到时填（在 engine on_event 中取）
 //     * server_send_ts_ms：服务端 send 前填
 //   - 客户端计算：
-//     * end_to_end_rtt = client_recv_ts - client_send_ts
-//     * uplink_latency = server_recv_ts - client_send_ts
-//     * engine_processing = server_send_ts - server_recv_ts
-//     * downlink_latency = client_recv_ts - server_send_ts
+//     * end_to_end_rtt = client_recv_ts - client_send_ts（客户端同基准，必有意义）
+//     * uplink_latency = server_recv_ts - client_send_ts（跨机器，需 NTP 同步）
+//     * engine_processing = server_send_ts - server_recv_ts（服务端同基准，必有意义）
+//     * downlink_latency = client_recv_ts - server_send_ts（跨机器，需 NTP 同步）
 //   - 注意：客户端在宿主机走虚拟网卡时，uplink/downlink latency 含 hypervisor 网络开销
 //
 // 日志策略：

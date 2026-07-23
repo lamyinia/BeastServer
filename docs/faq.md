@@ -40,7 +40,7 @@ BEAST_PLUGINS_DIR=build/plugins ./build/beastserver
 当 `server.debug.enabled = false` 时：
 
 - TCP 必须启用 TLS（`net.tcp.tls.enabled = true`，且 `cert_path` / `key_path` 非空）
-- KCP 必须启用加密（`net.kcp.crypto.mode = "psk_aes_gcm"`，`tag_bytes` 8-16）
+- KCP 必须启用 DTLS（`net.kcp.dtls.enabled = true`，且 `cert_path` / `key_path` 非空）
 - WebSocket Origin 白名单必须非空
 
 开发阶段保持 `debug.enabled = true` 可跳过这些检查。详见 [传输层](transport.md)。

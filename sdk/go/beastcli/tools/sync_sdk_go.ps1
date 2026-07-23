@@ -60,10 +60,15 @@ function Get-RegisterEntries {
         throw "Register file not found: $RegisterPath"
     }
 
-    # 用 ArrayList 而不是 @()，避免 PowerShell 5.1 把 $entries 当成单个 PSObject
-    # 导致 += 调用 op_Addition 失败的问题。
+    # ArrayList avoids PS 5.1 treating $entries as single PSObject (op_Addition fails).
+    #
+    # Get-Content MUST use -Encoding UTF8:
+    # PS 5.1 defaults to system ANSI (GBK on zh-CN Windows). When register_sdk_proto.txt
+    # contains UTF-8 Chinese comments, some multi-byte sequences merge with CRLF and
+    # swallow the newline, causing comment line + next entry line to be parsed as one
+    # (entry is then skipped as part of comment).
     $entries = New-Object System.Collections.ArrayList
-    foreach ($line in (Get-Content $RegisterPath)) {
+    foreach ($line in (Get-Content $RegisterPath -Encoding UTF8)) {
         $trimmed = $line.Trim()
         if ($trimmed.Length -eq 0 -or $trimmed.StartsWith("#")) { continue }
 

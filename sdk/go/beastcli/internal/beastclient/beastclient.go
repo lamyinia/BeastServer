@@ -93,9 +93,9 @@ func New(logger log.Logger) *BeastClient {
 // === 元信息 ===
 
 // SupportedTransports 支持的传输层。
-// v2 起支持 TCP + TLS；v3 +KCP；v4 +WebSocket。
+// v2 起支持 TCP + TLS；v3 +KCP；v3.5 +KCP/DTLS；v4 +WebSocket（ws + wss）。
 func (c *BeastClient) SupportedTransports() []transport.Type {
-	return []transport.Type{transport.TypeTCP, transport.TypeTLS}
+	return []transport.Type{transport.TypeTCP, transport.TypeTLS, transport.TypeKCP, transport.TypeKCPDTLS, transport.TypeWebSocket}
 }
 
 // === 生命周期 ===
@@ -148,19 +148,28 @@ func (c *BeastClient) Connect(cfg ConnectConfig) error {
 		switch cfg.Transport {
 		case transport.TypeTLS:
 			c.tr = transport.NewTLS(c.log)
+		case transport.TypeKCP:
+			c.tr = transport.NewKCP(c.log)
+		case transport.TypeKCPDTLS:
+			c.tr = transport.NewKCPDTLS(c.log)
+		case transport.TypeWebSocket:
+			c.tr = transport.NewWebSocket(c.log)
 		case transport.TypeTCP, "":
 			c.tr = transport.NewTCP(c.log)
 		default:
-			return fmt.Errorf("beastclient: unsupported transport type %q (v2 supports tcp/tls; kcp=v3, ws=v4)", cfg.Transport)
+			return fmt.Errorf("beastclient: unsupported transport type %q (v4 supports tcp/tls/kcp/kcp+dtls/websocket)", cfg.Transport)
 		}
 	}
 
 	tcfg := transport.Config{
-		Type:    cfg.Transport,
-		Host:    cfg.Host,
-		Port:    cfg.Port,
-		Timeout: cfg.Timeout,
-		TLS:     cfg.TLS,
+		Type:      cfg.Transport,
+		Host:      cfg.Host,
+		Port:      cfg.Port,
+		Timeout:   cfg.Timeout,
+		TLS:       cfg.TLS,
+		KCP:       cfg.KCP,
+		KCPDTLS:   cfg.KCPDTLS,
+		WebSocket: cfg.WebSocket,
 	}
 	if tcfg.Type == "" {
 		tcfg.Type = transport.TypeTCP
@@ -558,7 +567,7 @@ func (c *BeastClient) pushEvent(ev Event) {
 
 // ConnectConfig 连接配置。
 // v1 只用 Transport=TypeTCP + Host + Port + Timeout。
-// v2 加 TLS 字段；v3/v4 在扩展字段加 KCP key / WS URL 等。
+// v2 加 TLS 字段；v3 加 KCP 字段；v4 加 WS URL 等。
 type ConnectConfig struct {
 	Transport transport.Type
 	Host      string
@@ -569,9 +578,19 @@ type ConnectConfig struct {
 	// 复用 transport.TLSConfig 结构，转发给 transport.Config.TLS。
 	TLS *transport.TLSConfig
 
-	// KCP（v3）
-	KCPKey string // 加密 key，空表示不加密
+	// KCP 配置（v3）；Transport=TypeKCP 时必填，其他 Transport 忽略。
+	// 复用 transport.KCPConfig 结构，转发给 transport.Config.KCP。
+	KCP *transport.KCPConfig
 
-	// WebSocket（v4）
-	WSPath string // URL path，默认 "/"
+	// KCP+DTLS 配置（v3.5）；Transport=TypeKCPDTLS 时必填，其他 Transport 忽略。
+	// 复用 transport.KCPDTLSConfig 结构，转发给 transport.Config.KCPDTLS。
+	KCPDTLS *transport.KCPDTLSConfig
+
+	// WebSocket 配置（v4）；Transport=TypeWebSocket 时必填。
+	// WebSocketConfig.TLS == nil → ws://（明文）；非 nil → wss://（TLS）
+	// 复用 transport.WebSocketConfig 结构，转发给 transport.Config.WebSocket。
+	WebSocket *transport.WebSocketConfig
+
+	// WSPath URL path（保留旧字段，v4 推荐用 WebSocket.Path）。
+	WSPath string
 }

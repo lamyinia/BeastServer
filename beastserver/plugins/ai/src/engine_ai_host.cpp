@@ -1,6 +1,6 @@
 #include "beast/mixin/ai/engine_ai_host.hpp"
 
-#include "beast/platform/ai/routes.hpp"
+#include "beast/mixin/ai/routes.hpp"
 #include "beast/platform/core/log/logger.hpp"
 #include "beast/mixin/ai/ai_event_dispatch.hpp"
 #include "beast/mixin/ai/ai_tool_dispatch.hpp"

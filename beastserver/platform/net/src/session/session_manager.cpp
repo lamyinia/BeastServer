@@ -99,17 +99,10 @@ void SessionManager::register_pending_connection(PendingConnection pending) {
     // 按 channel 类型分发 pipeline：TCP 走 tcp_pipeline，KCP 走 kcp_pipeline。
     // 两者均安装 LengthField + Protobuf codec，但 KCP 的 KcpPipelineOptions 携带 conv/snd_wnd 等
     // 协议参数（虽然 KCP 协议参数在 transport 层消费，pipeline 仅用 max_frame_bytes）。
-    // KCP 启用加密时 install_kcp_pipeline 返回 KcpCryptoHandler，由 AuthHandler 在
-    // 鉴权成功后激活（auth.response 明文发送后再 enable，确保客户端能完成握手）。
-    // encrypt_bypass=true 时，同一 handler 也注入 KcpChannel 用于旁路帧加密/解密，
-    // 旁路路径与可靠路径共享 session keys，enable() 后自动同步激活。
-    std::shared_ptr<channel::KcpCryptoHandler> crypto_handler;
+    // KCP 加密统一由 DTLS 在 UDP 层处理（DtlsTransport），pipeline 层不再安装应用层加密 handler，
+    // AuthHandler 也不再参与密钥派生。
     if (bound_channel->type() == channel::ChannelType::Kcp) {
-        crypto_handler = channel::install_kcp_pipeline(bound_channel, pipeline_options_kcp_);
-        if (crypto_handler && pipeline_options_kcp_.crypto.encrypt_bypass) {
-            auto kcp_ch = std::static_pointer_cast<channel::KcpChannel>(bound_channel);
-            kcp_ch->set_bypass_crypto_handler(crypto_handler);
-        }
+        channel::install_kcp_pipeline(bound_channel, pipeline_options_kcp_);
     } else {
         channel::install_tcp_pipeline(bound_channel, pipeline_options_tcp_);
     }
@@ -120,8 +113,7 @@ void SessionManager::register_pending_connection(PendingConnection pending) {
             self->on_auth_success(connection_id, player_id);
         },
         [self, connection_id]() { self->on_auth_failed(connection_id); },
-        auth_verifier_,
-        std::move(crypto_handler)));  // nullptr for TCP/TLS or KCP plaintext
+        auth_verifier_));
 
     bound_channel->set_on_inactive([self, connection_id]() {
         BEAST_LOG_DEBUG("pending connection inactive: {}", connection_id);

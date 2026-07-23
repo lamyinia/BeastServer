@@ -37,34 +37,13 @@ struct UnreliableConfig {
     std::uint32_t max_queue_bytes{64 * 1024};    // 发送队列背压阈值，超限丢旧帧
 };
 
-/// KCP 应用层加密模式。
-/// - None：明文（默认，本地调试用）
-/// - PskAesGcm：鉴权成功后由 token+server_random 经 HKDF 派生 session_key，
-///              ikcp 之上对应用层 payload 做 AES-256-GCM 加密（nonce 4B + tag 16B）
-enum class KcpCryptoMode {
-    None,
-    PskAesGcm,
-};
-
-/// KCP 加密配置（server.json net.kcp.crypto）。
-/// 加密层位于 ikcp 之上：应用层 payload 加密后交给 ikcp_send，ikcp 协议字段保持明文。
-struct KcpCryptoConfig {
-    KcpCryptoMode mode{KcpCryptoMode::None};  // 加密模式
-    std::uint16_t tag_bytes{16};              // GCM tag 长度（旁路帧也用同长度）
-    bool encrypt_bypass{true};                // 是否加密旁路不可靠帧（mode != None 时生效）
-
-    [[nodiscard]] bool enabled() const noexcept { return mode != KcpCryptoMode::None; }
-};
-
 /// KCP DTLS 配置（server.json net.kcp.dtls）。
 /// 启用后在 UDP socket 上做 DTLS 握手，提供标准 TLS 级别的安全保证：
 ///   - 防 MITM（证书信任链）
 ///   - 防被动监听解密（ECDHE 前向安全）
 ///   - 包完整性 + 防重放
 ///
-/// 与 kcp.crypto 互斥：DTLS 已提供 AEAD，应用层 PSK 加密冗余。
-/// 启用 DTLS 时，crypto.mode 必须为 none（由 validate_server_config 强制）。
-///
+/// KCP 唯一加密方案：生产环境（debug.enabled=false）必须 dtls.enabled=true。
 /// 证书复用：与 tcp.tls 共用同一份 CA 签发的服务端证书（cert_path/key_path 可指向同一文件）。
 struct KcpDtlsConfig {
     bool enabled{false};                       // 总开关
@@ -89,16 +68,31 @@ struct KcpConfig {
     std::uint32_t resend{2};          // 快速重传阈值
     std::uint32_t nc{1};              // 1 = 关闭拥塞控制
     UnreliableConfig unreliable;      // 旁路不可靠子通道配置
-    KcpCryptoConfig crypto;           // 应用层 PSK 加密配置（与 dtls 互斥）
-    KcpDtlsConfig dtls;               // DTLS 加密配置（与 crypto 互斥）
+    KcpDtlsConfig dtls;               // DTLS 加密配置（KCP 唯一加密方案）
 
     [[nodiscard]] bool enabled() const noexcept { return port > 0; }
 };
 
+/// WebSocket TLS 加密配置（server.json net.websocket.tls）。
+/// 字段语义与 TcpTlsConfig 完全对齐：
+///   - enabled=true 时 WebsocketServer 创建 ssl::context，TCP accept 后先做 TLS 握手，
+///     再走 HTTP Upgrade / WS 升级，提供原生 wss:// 支持（无需 nginx 反代终止 TLS）。
+///   - 证书可与 TCP TLS 复用同一份（cert_path/key_path 指向同文件），
+///     也可独立签发（如浏览器联调场景用 mkcert CA 签发以获得浏览器信任）。
+/// 生产环境（debug.enabled=false）强制 enabled=true（见 validate_server_config）。
+struct WebsocketTlsConfig {
+    bool enabled{false};              // 总开关；false 时走明文 ws://（仅本地调试用）
+    std::string cert_path;            // 服务端证书 PEM 路径（必填当 enabled=true）
+    std::string key_path;             // 服务端私钥 PEM 路径（必填当 enabled=true）
+    std::string min_version{"TLSv1.2"}; // 最低 TLS 版本：TLSv1.2 / TLSv1.3
+    std::string cipher_list;          // 留空用 OpenSSL 默认 cipher suite
+};
+
 /// WebSocket 配置（server.json net.websocket）。
 /// 用于 Web 客户端（浏览器/H5/小游戏）接入。
-/// 生产部署：Client → Nginx(WSS/TLS 终止) → BeastServer(ws://明文)，
-/// 因此 BeastServer 内部不做 TLS（由反向代理负责）。
+/// 部署模式：
+///   - 原生 wss://（推荐）：tls.enabled=true，BeastServer 直接终止 TLS；
+///   - nginx 反代终止 TLS：tls.enabled=false + nginx 配 ssl；后端走明文 ws://（仅适合内网/可信网络）。
 /// port=0 表示不启用 WebSocket 接入。
 struct WebsocketConfig {
     std::uint16_t port{0};            // 0 = 不启用
@@ -108,6 +102,7 @@ struct WebsocketConfig {
     /// 生产环境必须配置白名单防止 CSRF，如 ["https://yourgame.com"]。
     /// 支持通配符前缀匹配：["https://*.yourgame.com"]。
     std::vector<std::string> allowed_origins;
+    WebsocketTlsConfig tls;           // TLS 加密配置（生产强制 enabled=true）
 
     [[nodiscard]] bool enabled() const noexcept { return port > 0; }
 };

@@ -35,15 +35,15 @@ public:
 private:
     void on_echo(
         const beast::platform::PlayerId& player_id,
-        const beast::demo::EchoRequest& req);
+        const beast::stress::EchoRequest& req);
 
     void on_compute(
         const beast::platform::PlayerId& player_id,
-        const beast::demo::ComputeRequest& req);
+        const beast::stress::ComputeRequest& req);
 
     void on_metrics_query(
         const beast::platform::PlayerId& player_id,
-        const beast::demo::MetricsQueryRequest& req);
+        const beast::stress::MetricsQueryRequest& req);
 
     beast::platform::engine::context::EngineContext* ctx_{nullptr};
     Counters counters_;

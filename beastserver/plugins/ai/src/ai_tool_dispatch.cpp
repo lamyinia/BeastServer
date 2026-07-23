@@ -1,6 +1,6 @@
 #include "beast/mixin/ai/ai_tool_dispatch.hpp"
 
-#include "beast/platform/ai/routes.hpp"
+#include "beast/mixin/ai/routes.hpp"
 
 namespace beast::mixin::ai {
 

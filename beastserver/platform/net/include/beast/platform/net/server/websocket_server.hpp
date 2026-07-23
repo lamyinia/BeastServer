@@ -10,6 +10,7 @@
 #include "beast/platform/net/transport/websocket_transport.hpp"
 
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ssl/context.hpp>
 
 #include <cstdint>
 #include <memory>
@@ -18,10 +19,17 @@
 
 namespace beast::platform::net::server {
 
-/// WebsocketServer：accept TCP → HTTP Upgrade 握手 → Origin 校验 → WebsocketChannel。
+/// WebsocketServer：accept TCP →（可选 TLS 握手）→ HTTP Upgrade 握手 → Origin 校验 → WebsocketChannel。
 ///
-/// 生产部署中 TLS 由反向代理（Nginx）终止，BeastServer 收到的是明文 HTTP Upgrade 请求。
-/// 本类不做 TLS（与 TcpServer 不同），如需端到端加密请在 WebsocketTransport 外层包装 SSL。
+/// 两种部署模式：
+///   - 明文 ws://：tls.enabled=false，TCP accept 后直接读 HTTP Upgrade（仅本地调试用）
+///   - 原生 wss://：tls.enabled=true，TCP accept 后先做 TLS 握手，再读 HTTP Upgrade
+///     （生产推荐，无需 nginx 反代终止 TLS）
+///
+/// TLS 实现：
+///   - ssl_context 通过 shared_ptr 持有，支持热重载（reload_tls_cert）
+///   - 新连接的 TlsHandshakeSession 用当前 ssl_context_；旧连接的 WebsocketTlsTransport
+///     持有旧 context 的 shared_ptr，零停机证书轮换（同 TcpServer 模式）
 ///
 /// Origin 校验：
 ///   - allowed_origins 为空时允许所有 Origin（仅本地调试用，生产环境强制非空）
@@ -53,12 +61,31 @@ public:
     void start();
     void stop();
 
+    /// 热重载 TLS 证书：重读 config_.tls.cert_path/key_path，构建新 ssl::context，
+    /// 原子 swap 到 ssl_context_。旧连接的 WebsocketTlsTransport 仍持有旧 context 的 shared_ptr，
+    /// 直到连接关闭才释放，实现零停机证书轮换（SIGHUP 触发）。
+    /// 返回 true 表示重载成功；false 表示 TLS 未启用或加载失败（保留旧 context）。
+    [[nodiscard]] bool reload_tls_cert();
+
 private:
-    /// 单次握手会话：持有 socket + buffer，async_read HTTP 请求 → 校验 Origin → async_accept。
-    /// 完成后通过 shared_from_this 保持生命周期，握手成功/失败均自动析构。
+    /// 单次握手会话（明文 ws://）：持有 socket + buffer，async_read HTTP 请求 → 校验 Origin → async_accept。
     class HandshakeSession;
 
+    /// 单次握手会话（wss://）：持有 ssl::stream + buffer，
+    /// TCP accept → async_handshake(TLS) → async_read HTTP 请求 → 校验 Origin → async_accept(WS)。
+    class TlsHandshakeSession;
+
     void on_new_socket(boost::asio::ip::tcp::socket socket);
+
+    /// 根据 config_.tls 初始化 ssl_context（加载证书/私钥/版本/cipher）。
+    /// config_.tls.enabled=false 时返回 nullptr。
+    /// 失败时抛 std::runtime_error，由调用方在构造期捕获。
+    void init_ssl_context();
+
+    /// 按 config_.tls 构建 ssl::context（不含赋值给成员）。
+    /// config_.tls.enabled=false 时返回 nullptr。
+    /// 失败时抛 std::runtime_error。
+    [[nodiscard]] std::shared_ptr<boost::asio::ssl::context> build_ssl_context();
 
     /// Origin 匹配：支持通配符前缀（"https://*.example.com"）。
     /// allowed_origins 为空时返回 true（允许所有，仅调试用）。
@@ -74,6 +101,7 @@ private:
     std::shared_ptr<session::SessionManager> session_manager_;
     std::shared_ptr<outbound::OutboundHub> outbound_hub_;
     std::unique_ptr<listener::TcpListener> listener_;
+    std::shared_ptr<boost::asio::ssl::context> ssl_context_;  // null = 明文 ws://
 };
 
 } // namespace beast::platform::net::server

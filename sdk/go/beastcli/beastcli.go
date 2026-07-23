@@ -152,11 +152,35 @@ const (
 	TypeTCP       Type = transport.TypeTCP
 	TypeTLS       Type = transport.TypeTLS
 	TypeKCP       Type = transport.TypeKCP
+	TypeKCPDTLS   Type = transport.TypeKCPDTLS
 	TypeWebSocket Type = transport.TypeWebSocket
 )
 
 // TLSConfig TLS transport 配置（v2）。
 type TLSConfig = transport.TLSConfig
+
+// KCPConfig KCP transport 配置（v3）。
+// 字段必须与服务端 server.json net.kcp.* 对齐，详见 transport.KCPConfig 文档。
+type KCPConfig = transport.KCPConfig
+
+// KCPDTLSConfig KCP+DTLS 配置（v3.5）。
+// 复用 transport.KCPDTLSConfig，调用方无需 import internal/transport。
+type KCPDTLSConfig = transport.KCPDTLSConfig
+
+// WebSocketConfig WebSocket 配置（v4）。
+// 复用 transport.WebSocketConfig，调用方无需 import internal/transport。
+// 用法：
+//
+//	bc.Connect(beastcli.ConnectConfig{
+//	    Transport: beastcli.TypeWebSocket,
+//	    Host: "192.168.217.130", Port: 8011,
+//	    WebSocket: &beastcli.WebSocketConfig{}, // ws://
+//	})
+//	// 或 wss://：
+//	// WebSocket: &beastcli.WebSocketConfig{
+//	//     TLS: &beastcli.TLSConfig{ServerName: "192.168.217.130", CAPath: caPath},
+//	// }
+type WebSocketConfig = transport.WebSocketConfig
 
 // === log 类型 re-export ===
 //

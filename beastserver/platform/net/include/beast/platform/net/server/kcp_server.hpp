@@ -20,16 +20,19 @@ namespace beast::platform::net::server {
  * KcpServer：KCP/UDP 接入服务器，结构与 TcpServer 对齐。
  *
  * 与 TcpServer 的差异：
- *   - UdpListener 单 socket 复用，按远端 endpoint demux
- *   - 每个 peer 新建独立 KcpTransport（绑定本地临时端口 + set_remote_endpoint）
+ *   - UdpListener 单 socket（如 8010）复用所有 peer，按远端 endpoint demux
+ *   - 出站包源端口 = 监听端口（8010），客户端 connected socket 可正常接收
+ *   - 每个 peer 新建独立 KcpTransport（不持有 socket，通过 udp_output_ 回调走 listener.send_to）
  *   - 通过 SessionManager::on_new_connection(IChannel) 接入，复用 auth/pipeline 流程
  *
  * DTLS 模式（config_.dtls.enabled=true）：
  *   - 启动时构建共享 DTLS SSL_CTX（所有 peer 复用，shared_ptr 自动释放）
- *   - on_new_peer 创建 DtlsTransport 拥有 UDP socket，KcpTransport 退化为"协议层"
+ *   - on_new_peer 创建 DtlsTransport（不持有 socket，通过 udp_output_ 走 listener.send_to）
+ *     与 KcpTransport 配对：KcpTransport.udp_output_ → DtlsTransport.encrypt_and_send
  *   - 数据路径：UdpListener → DtlsTransport::inject_inbound → SSL_read →
  *     on_decrypted → KcpTransport::inject_inbound → ikcp_input / on_unreliable_bytes_
- *   - 出站：KcpTransport::on_udp_output → udp_output_replacer_ → DtlsTransport::encrypt_and_send
+ *   - 出站：KcpTransport::on_udp_output → udp_output_ → DtlsTransport::encrypt_and_send →
+ *     udp_output_ → listener.send_to
  *
  * 预热阶段：auth/auth_verifier 与 TcpServer 共用配置；KCP 鉴权超时复用 AuthConfig。
  */
@@ -69,19 +72,17 @@ private:
     void on_new_peer(const boost::asio::ip::udp::endpoint& peer, std::vector<std::uint8_t>&& first_packet);
 
     /// DTLS 模式专用：创建 DtlsTransport + KcpTransport 配对，wire 双向数据流。
-    /// dtls_transport 拥有 UDP socket；kcp_transport 退化为协议层（socket_ 默认构造未打开）。
+    /// 两者都不持有 socket，出站通过 udp_output_ 回调走 listener.send_to。
     void on_new_peer_dtls(
         const boost::asio::ip::udp::endpoint& peer,
         std::vector<std::uint8_t>&& first_packet,
-        boost::asio::strand<boost::asio::any_io_executor>& strand,
-        boost::asio::ip::udp::socket& socket);
+        boost::asio::strand<boost::asio::any_io_executor>& strand);
 
-    /// 明文模式专用（原有路径）：创建 KcpTransport 直接拥有 socket。
+    /// 明文模式专用：创建 KcpTransport，出站通过 udp_output_ 走 listener.send_to。
     void on_new_peer_plaintext(
         const boost::asio::ip::udp::endpoint& peer,
         std::vector<std::uint8_t>&& first_packet,
-        boost::asio::strand<boost::asio::any_io_executor>& strand,
-        boost::asio::ip::udp::socket& socket);
+        boost::asio::strand<boost::asio::any_io_executor>& strand);
 
     /// 安装旁路 UnreliableReceiver（两种模式共用）。
     void install_unreliable_receiver(
@@ -96,7 +97,8 @@ private:
     std::shared_ptr<session::SessionManager> session_manager_;
     std::shared_ptr<outbound::OutboundHub> outbound_hub_;
     std::shared_ptr<outbound::OutboundRouteRegistry> route_reliability_;
-    std::unique_ptr<listener::UdpListener> listener_;
+    /// shared_ptr：UdpListener 继承 enable_shared_from_this（send_to lambda 捕获 weak_ptr）。
+    std::shared_ptr<listener::UdpListener> listener_;
 
     /// DTLS SSL_CTX（所有 peer 共享，shared_ptr 自动释放）；仅 config_.dtls.enabled 时构建。
     transport::DtlsTransport::SslContextPtr dtls_context_;

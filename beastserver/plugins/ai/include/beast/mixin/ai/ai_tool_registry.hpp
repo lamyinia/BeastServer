@@ -1,6 +1,6 @@
 #pragma once
 
-#include "beast/platform/ai/model/ai_types.hpp"
+#include "beast/mixin/ai/model/ai_types.hpp"
 #include "beast/mixin/ai/_platform_compat.hpp"
 
 #include <functional>

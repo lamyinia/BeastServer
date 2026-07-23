@@ -44,9 +44,12 @@
 | `unreliable.enabled` | bool | true | 不可靠子通道开关 |
 | `unreliable.magic` | int | 48879 | 帧魔数（0xBEEF） |
 | `unreliable.max_queue_bytes` | int | 65536 | 不可靠队列上限 |
-| `crypto.mode` | string | "none" | 加密模式（none / psk_aes_gcm） |
-| `crypto.tag_bytes` | int | 16 | 认证标签长度（8-16） |
-| `crypto.encrypt_bypass` | bool | true | 不可靠子通道是否加密 |
+| `dtls.enabled` | bool | false | DTLS-over-UDP 加密开关（生产强制 true） |
+| `dtls.cert_path` | string | "" | DTLS 服务端证书（PEM，与 TCP TLS 共用） |
+| `dtls.key_path` | string | "" | DTLS 服务端私钥（PEM，与 TCP TLS 共用） |
+| `dtls.min_version` | string | "DTLSv1.2" | DTLS 最低版本（`DTLSv1.2` / `DTLSv1.3`，后者需 OpenSSL 3.2+） |
+| `dtls.cipher_list` | string | "" | OpenSSL cipher 字符串（空 = 默认） |
+| `dtls.handshake_timeout_seconds` | int | 5 | DTLS 握手超时（秒） |
 
 ### WebSocket
 
@@ -107,7 +110,7 @@ AI 接入详见 [AI 引擎接入指南](ai-engine.md)。
 当 `server.debug.enabled = false`（生产环境）时：
 
 - **TCP 必须启用 TLS**：`net.tcp.tls.enabled = true`，且 `cert_path` / `key_path` 非空
-- **KCP 必须启用加密**：`net.kcp.crypto.mode = "psk_aes_gcm"`，`tag_bytes` 在 8-16 之间
+- **KCP 必须启用 DTLS**：`net.kcp.dtls.enabled = true`，且 `cert_path` / `key_path` 非空
 - **WebSocket Origin 白名单非空**
 
 详见 [传输层](transport.md)。

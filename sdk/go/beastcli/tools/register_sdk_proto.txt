@@ -1,4 +1,4 @@
-﻿# register_sdk_proto.txt
+# register_sdk_proto.txt
 # 每行一个 .proto 相对路径（相对 d:/git-project/BeastServer-project/bizconfig/protocol/）
 # 空行和 # 开头的注释行被忽略
 #
@@ -23,3 +23,8 @@ platform/room.proto
 
 # 玩法层：sdk_event（BeastClient SendRequest 用，5 个 message DTO）
 game/example/sdk_event/sdk_event.proto => biz/sdk_event/
+
+# 玩法层：stress（压测用，stress_event / stress_tick 共用，6 个 message DTO）
+# stress_event (EventDriven) 与 stress_tick (FixedTick@30Hz) route 名完全一致，
+# 压测客户端通过同份 proto 对比两种引擎模式差异。
+game/example/stress/stress.proto => biz/stress/

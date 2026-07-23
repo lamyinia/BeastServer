@@ -7,8 +7,8 @@
 //   "ai.service" → shared_ptr<ai::AiService>
 //   "ai.facade"  → shared_ptr<beast::mixin::ai::InstanceAiFacade>（玩法层通过 InstanceManager 使用）
 
-#include "beast/platform/ai/service/ai_config.hpp"
-#include "beast/platform/ai/service/ai_service.hpp"
+#include "beast/mixin/ai/service/ai_config.hpp"
+#include "beast/mixin/ai/service/ai_service.hpp"
 #include "beast/platform/core/log/logger.hpp"
 #include "beast/mixin/ai/instance_ai_facade.hpp"
 #include "beast/platform/plugin/platform_context.hpp"

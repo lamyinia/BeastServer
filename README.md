@@ -99,18 +99,7 @@ BeastServer-project/
 
 桌面联调工作台，与 `beastserver/` / `sdk/` / `bizconfig/` 平级。基于 Wails v3 + Vue 3，按"树形目录 + 每叶子一页"组织联调页面，工具跟着玩法一起长，不是通用发包器。
 
-- v1 MVP：Go target + 1 个 TCP Ping-Pong 联调页
-- v2+：C++ / Godot target、TLS / KCP / WebSocket transport、并发压测、bot 池
-- 设计文档：[v1-design.md](suppservice/global-workbench/docs/v1-design.md)
 - 入口：`suppservice/global-workbench/main.go`
-
-### HotLua
-
-平台插件，注册 `hotlua.service`（LuaVmService）与 `hotlua.broker`（HotluaBroker）到 ServiceRegistry。玩法插件通过 ServiceRegistry 获取 `hotlua.service` 后 `create_vm` 创建隔离的 Lua VM，做脚本热更新逻辑。`hotlua.broker` 提供 gRPC 与引擎同步入口（参考 `gameplays/example/demo_hotlua`）。
-
-### DirtyPersist
-
-平台插件，注册 `dirtypersist.service` 与 `dirtypersist.facade` 到 ServiceRegistry。采用 Boost.MySQL（header-only，原生 Boost.Asio async/awaitable，无新增 libmysqlclient 依赖）+ 字段级 dirty tracking + FlushScheduler debounce 调度。玩法引擎通过 `InstanceDirtyPersistFacade` mixin 接入。
 
 ## 示例插件
 

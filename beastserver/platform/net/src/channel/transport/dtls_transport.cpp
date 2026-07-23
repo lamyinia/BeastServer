@@ -7,6 +7,7 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
+#include <cerrno>
 #include <cstring>
 #include <utility>
 
@@ -35,15 +36,13 @@ std::string get_openssl_error() {
 } // namespace
 
 DtlsTransport::DtlsTransport(
-    UdpSocket socket,
     Strand strand,
     SslContextPtr ssl_ctx,
     std::uint32_t handshake_timeout_seconds)
-    : socket_(std::move(socket))
-    , strand_(std::move(strand))
+    : strand_(std::move(strand))
     , ssl_ctx_(std::move(ssl_ctx))
     , handshake_timeout_seconds_(handshake_timeout_seconds == 0 ? 5 : handshake_timeout_seconds)
-    , handshake_timer_(socket_.get_executor()) {
+    , handshake_timer_(strand_) {
     BOOST_ASSERT(ssl_ctx_ && "DtlsTransport: ssl_ctx must not be null");
 }
 
@@ -145,6 +144,13 @@ void DtlsTransport::async_handshake(OnHandshakeDone on_done, OnError on_error) {
         if (closed_) {
             return;
         }
+        if (!udp_output_) {
+            BEAST_LOG_ERROR("DtlsTransport async_handshake called without udp_output set");
+            if (on_error) {
+                on_error("udp_output not set");
+            }
+            return;
+        }
         on_handshake_done_ = std::move(on_done);
         on_error_ = std::move(on_error);
 
@@ -219,15 +225,36 @@ void DtlsTransport::decrypt_pending() {
                 Bytes plaintext(decrypt_buf_.begin(), decrypt_buf_.begin() + n);
                 on_decrypted_(std::move(plaintext));
             }
-        } else {
-            const int err = SSL_get_error(ssl_, n);
-            if (err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) {
-                BEAST_LOG_WARN("DtlsTransport: SSL_read error: {} ({})",
-                               ERR_error_string(err, nullptr), get_openssl_error());
-                do_close("ssl_read error");
+            continue;
+        }
+
+        const int err = SSL_get_error(ssl_, n);
+        switch (err) {
+        case SSL_ERROR_WANT_READ:
+        case SSL_ERROR_WANT_WRITE:
+            // 正常：BIO 里没有更多待解密数据，等下一次 inject_inbound
+            break;
+        case SSL_ERROR_ZERO_RETURN:
+            // 对端发 close_notify，正常关闭
+            do_close("remote closed (close_notify)");
+            break;
+        case SSL_ERROR_SYSCALL:
+            // 系统错误：EAGAIN/EWOULDBLOCK 是正常的（BIO 非阻塞），其他视为致命
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
             }
+            BEAST_LOG_WARN("DtlsTransport: SSL_read syscall error: errno={} ({})",
+                           errno, std::strerror(errno));
+            do_close("ssl_read syscall error");
+            break;
+        default:
+            // SSL_ERROR_SSL 或其他：致命错误（含 SSL_R_SHUTDOWN_WHILE_IN_INIT 等）
+            BEAST_LOG_WARN("DtlsTransport: SSL_read error: {} ({})",
+                           ERR_error_string(err, nullptr), get_openssl_error());
+            do_close("ssl_read error");
             break;
         }
+        break;
     }
 }
 
@@ -263,7 +290,8 @@ void DtlsTransport::drive_handshake() {
 }
 
 void DtlsTransport::flush_write_bio() {
-    // 从 write_bio 取出所有待发的数据，逐包 async_send_to
+    // 从 write_bio 取出所有待发的加密数据，逐包调 udp_output_ 投递
+    // （udp_output_ 通常是 listener->send_to，自带 strand 串行化）
     while (true) {
         Bytes packet(4096);
         const int n = BIO_read(write_bio_, packet.data(), static_cast<int>(packet.size()));
@@ -271,40 +299,10 @@ void DtlsTransport::flush_write_bio() {
             break;
         }
         packet.resize(static_cast<std::size_t>(n));
-        do_udp_write(std::move(packet));
+        if (udp_output_) {
+            udp_output_(std::move(packet));
+        }
     }
-}
-
-void DtlsTransport::do_udp_write(Bytes&& data) {
-    write_queue_.push_back(std::move(data));
-    if (!writing_) {
-        writing_ = true;
-        start_next_write();
-    }
-}
-
-void DtlsTransport::start_next_write() {
-    if (write_queue_.empty()) {
-        writing_ = false;
-        return;
-    }
-    Bytes packet = std::move(write_queue_.front());
-    write_queue_.pop_front();
-
-    socket_.async_send_to(
-        boost::asio::buffer(packet),
-        remote_,
-        boost::asio::bind_executor(strand_, [self = shared_from_this(), this](
-                                                const boost::system::error_code& ec,
-                                                std::size_t /*sent*/) {
-            if (ec) {
-                writing_ = false;
-                do_close("udp send error: " + ec.message());
-                return;
-            }
-            // 继续处理队列里的下一个包
-            start_next_write();
-        }));
 }
 
 void DtlsTransport::encrypt_and_send(Bytes&& plaintext) {
@@ -344,8 +342,16 @@ void DtlsTransport::on_handshake_success() {
     // 不启动 do_udp_read：UdpListener 统一收包，demux 后调用 inject_inbound
     // 这样 DTLS 模式与明文模式架构一致
 
+    // 延后一拍执行 on_handshake_done_：确保 OpenSSL 内部状态机完全转换（离开 TLS_ST_BEFORE），
+    // 避免紧接着的 decrypt_pending() → SSL_read 在 init 状态下报 SSL_R_SHUTDOWN_WHILE_IN_INIT。
+    // post 到 strand_ 保证：①与 decrypt_pending 串行；②此 lambda 返回后才执行回调，
+    //   给 OpenSSL 完成状态切换的机会。
     if (on_handshake_done_) {
-        on_handshake_done_();
+        boost::asio::post(strand_, [self = shared_from_this(), this]() {
+            if (!closed_ && on_handshake_done_) {
+                on_handshake_done_();
+            }
+        });
     }
 }
 
@@ -392,10 +398,7 @@ void DtlsTransport::do_close(const std::string& reason) {
 
     boost::system::error_code ignored;
     handshake_timer_.cancel(ignored);
-    if (socket_.is_open()) {
-        socket_.cancel(ignored);
-        socket_.close(ignored);
-    }
+    // 不持有 socket，无需 close（socket 由 UdpListener 管理）
 
     // 优雅关闭 SSL（发送 close_notify，非阻塞）
     if (ssl_) {

@@ -1,5 +1,5 @@
-#include "beast/platform/ai/model/chat.hpp"
-#include "beast/platform/ai/routes.hpp"
+#include "beast/mixin/ai/model/chat.hpp"
+#include "beast/mixin/ai/routes.hpp"
 #include "beast/mixin/ai/instance_ai_facade.hpp"
 #include "beast/platform/engine/dispatch/instance_dispatch_binding.hpp"
 #include "beast/platform/engine/dispatch/instance_session_binding.hpp"

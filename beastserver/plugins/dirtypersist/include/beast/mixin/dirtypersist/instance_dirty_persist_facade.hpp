@@ -1,7 +1,7 @@
 #pragma once
 
-#include "beast/platform/dirtypersist/dirty_persist_service.hpp"
-#include "beast/platform/dirtypersist/repository.hpp"
+#include "beast/mixin/dirtypersist/dirty_persist_service.hpp"
+#include "beast/mixin/dirtypersist/repository.hpp"
 
 #include <string>
 #include <string_view>

@@ -17,14 +17,14 @@ namespace {
 [[nodiscard]] std::uint64_t now_ms() {
     return static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now().time_since_epoch())
+            std::chrono::system_clock::now().time_since_epoch())
             .count());
 }
 
 [[nodiscard]] std::uint64_t uptime_ms(const Counters& counters) {
     return static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - counters.start_ts)
+            std::chrono::system_clock::now() - counters.start_ts)
             .count());
 }
 
@@ -51,9 +51,9 @@ void StressTickEngine::on_start(beast::platform::engine::context::EngineContext&
 
 void StressTickEngine::on_event(const beast::platform::engine::instance::InstanceEvent& event) {
     BEAST_ENGINE_EVENT_SWITCH(event)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("stress.echo", beast::demo::EchoRequest, on_echo)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("stress.compute", beast::demo::ComputeRequest, on_compute)
-        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("stress.metrics.query", beast::demo::MetricsQueryRequest, on_metrics_query)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("stress.echo", beast::stress::EchoRequest, on_echo)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("stress.compute", beast::stress::ComputeRequest, on_compute)
+        BEAST_ENGINE_EVENT_PROTO_PLAYER_THIS("stress.metrics.query", beast::stress::MetricsQueryRequest, on_metrics_query)
     BEAST_ENGINE_EVENT_SWITCH_END
 }
 
@@ -67,12 +67,12 @@ void StressTickEngine::on_tick(
 
 void StressTickEngine::on_echo(
     const beast::platform::PlayerId& player_id,
-    const beast::demo::EchoRequest& req) {
+    const beast::stress::EchoRequest& req) {
     counters_.total_echo_req.fetch_add(1, std::memory_order_relaxed);
 
     const std::uint64_t recv_ts = now_ms();
 
-    beast::demo::EchoResponse resp;
+    beast::stress::EchoResponse resp;
     resp.set_client_send_ts_ms(req.client_send_ts_ms());
     resp.set_server_recv_ts_ms(recv_ts);
     resp.set_payload(req.payload());
@@ -84,7 +84,7 @@ void StressTickEngine::on_echo(
 
 void StressTickEngine::on_compute(
     const beast::platform::PlayerId& player_id,
-    const beast::demo::ComputeRequest& req) {
+    const beast::stress::ComputeRequest& req) {
     counters_.total_compute_req.fetch_add(1, std::memory_order_relaxed);
 
     const std::uint64_t recv_ts = now_ms();
@@ -96,7 +96,7 @@ void StressTickEngine::on_compute(
         is_tenpai_result = is_tenpai(tiles_vec);
     }
 
-    beast::demo::ComputeResponse resp;
+    beast::stress::ComputeResponse resp;
     resp.set_client_send_ts_ms(req.client_send_ts_ms());
     resp.set_server_recv_ts_ms(recv_ts);
     resp.set_is_tenpai(is_tenpai_result);
@@ -109,8 +109,8 @@ void StressTickEngine::on_compute(
 
 void StressTickEngine::on_metrics_query(
     const beast::platform::PlayerId& player_id,
-    const beast::demo::MetricsQueryRequest& /*req*/) {
-    beast::demo::MetricsQueryResponse resp;
+    const beast::stress::MetricsQueryRequest& /*req*/) {
+    beast::stress::MetricsQueryResponse resp;
     resp.set_total_echo_req(counters_.total_echo_req.load(std::memory_order_relaxed));
     resp.set_total_echo_resp(counters_.total_echo_resp.load(std::memory_order_relaxed));
     resp.set_total_compute_req(counters_.total_compute_req.load(std::memory_order_relaxed));

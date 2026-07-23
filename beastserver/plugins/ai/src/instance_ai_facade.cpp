@@ -1,6 +1,6 @@
 #include "beast/mixin/ai/instance_ai_facade.hpp"
 
-#include "beast/platform/ai/routes.hpp"
+#include "beast/mixin/ai/routes.hpp"
 #include "beast/platform/core/log/logger.hpp"
 #include "beast/platform/engine/context/engine_context.hpp"
 #include "beast/platform/engine/instance/instance_event.hpp"

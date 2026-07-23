@@ -28,17 +28,17 @@ private:
     // Echo: 测 IO + carrier 调度吞吐
     void on_echo(
         const beast::platform::PlayerId& player_id,
-        const beast::demo::EchoRequest& req);
+        const beast::stress::EchoRequest& req);
 
     // Compute: 测 CPU 压力（简化版听牌算法）
     void on_compute(
         const beast::platform::PlayerId& player_id,
-        const beast::demo::ComputeRequest& req);
+        const beast::stress::ComputeRequest& req);
 
     // Metrics 查询：拉取服务端累计指标
     void on_metrics_query(
         const beast::platform::PlayerId& player_id,
-        const beast::demo::MetricsQueryRequest& req);
+        const beast::stress::MetricsQueryRequest& req);
 
     beast::platform::engine::context::EngineContext* ctx_{nullptr};
     Counters counters_;
