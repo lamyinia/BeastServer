@@ -57,8 +57,8 @@ cmake --build build -j$(nproc)
 ```
 BeastServer-project/
 ├── beastserver/
-│   ├── platform/          # 框架核心（core/net/engine/ai/server）
-│   ├── plugins/           # 平台插件（AI / DirtyPersist / HotLua）
+│   ├── platform/          # 框架核心（core/net/engine/rpc/discovery/server）
+│   ├── plugins/           # 平台插件（AI / DirtyPersist / HotLua，含服务实现 + 集成层 + 插件 .so）
 │   └── gameplays/         # 玩法插件（demo/moba/board）
 ├── bizconfig/             # 策划表 Excel + schema + 通信 proto
 ├── sdk/                   # 客户端 SDK（Godot / C++ Native）
